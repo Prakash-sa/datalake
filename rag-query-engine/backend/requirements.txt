@@ -1,0 +1,15 @@
+fastapi==0.109.0
+uvicorn==0.27.0
+pydantic==2.5.0
+python-dotenv==1.0.0
+langchain==0.1.9
+langchain-ollama==0.1.1
+langchain-chroma==0.1.1
+langchain-text-splitters==0.0.1
+langchain-core==0.1.23
+langgraph==0.0.31
+trino==0.8.1
+sqlalchemy==2.0.23
+chromadb==0.4.24
+pypdf==3.17.1
+httpx==0.25.2
