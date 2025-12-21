@@ -4,14 +4,13 @@ Semantic search and LLM-powered analysis on structured and unstructured enterpri
 """
 
 import os
+import json
 from typing import List
 from datetime import datetime
 import logging
-import json
 
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
-from langchain_chroma import Chroma
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +20,7 @@ class DocumentRAGEngine:
     """
     RAG Engine for semantic search and LLM analysis on enterprise documents.
     Supports structured and unstructured data (PDFs, documents, databases, etc.)
+    Uses in-memory vector store for demo purposes.
     """
 
     def __init__(self, chroma_path: str = "./chroma_db", ollama_url: str = "http://localhost:11434"):
@@ -28,18 +28,18 @@ class DocumentRAGEngine:
         Initialize the document RAG engine.
         
         Args:
-            chroma_path: Path to Chroma vector database
+            chroma_path: Path to Chroma vector database (for future use)
             ollama_url: URL to Ollama LLM service
         """
         self.chroma_path = chroma_path
         self.ollama_url = ollama_url
         self.embeddings = None
         self.llm = None
-        self.vector_store = None
+        self.documents_store = {}  # In-memory document store: {id: {"content": ..., "embedding": ..., "metadata": ...}}
         self._initialize_components()
 
     def _initialize_components(self):
-        """Initialize RAG components: embeddings, LLM, vector store."""
+        """Initialize RAG components: embeddings, LLM."""
         try:
             # Initialize embeddings model
             self.embeddings = OllamaEmbeddings(
@@ -51,14 +51,6 @@ class DocumentRAGEngine:
             # Initialize LLM
             self.llm = OllamaLLM(model="mistral", base_url=self.ollama_url, temperature=0.3)
             logger.info("✅ LLM initialized")
-            
-            # Initialize vector store
-            self.vector_store = Chroma(
-                collection_name="documents",
-                persist_directory=self.chroma_path,
-                embedding_function=self.embeddings
-            )
-            logger.info("✅ Vector store initialized")
         except Exception as e:
             logger.error(f"❌ Failed to initialize RAG components: {e}")
             raise
@@ -76,23 +68,22 @@ class DocumentRAGEngine:
         try:
             logger.info(f"📄 Indexing {len(documents)} documents...")
             
-            doc_texts = []
-            doc_ids = []
-            doc_metadatas = []
-            
             for doc in documents:
-                doc_texts.append(doc.get('content', ''))
-                doc_ids.append(doc.get('id', ''))
-                doc_metadatas.append(doc.get('metadata', {}))
+                doc_id = doc.get('id', '')
+                content = doc.get('content', '')
+                metadata = doc.get('metadata', {})
+                
+                # Generate embedding for document
+                embedding = self.embeddings.embed_query(content)
+                
+                # Store in memory
+                self.documents_store[doc_id] = {
+                    "content": content,
+                    "embedding": embedding,
+                    "metadata": metadata
+                }
             
-            # Add to vector store
-            if doc_texts:
-                self.vector_store.add_texts(
-                    texts=doc_texts,
-                    ids=doc_ids,
-                    metadatas=doc_metadatas
-                )
-                logger.info(f"✅ Indexed {len(doc_texts)} documents")
+            logger.info(f"✅ Indexed {len(documents)} documents")
             
             return {
                 "status": "success",
@@ -121,13 +112,34 @@ class DocumentRAGEngine:
         try:
             logger.info(f"🔍 Searching for: {query}")
             
-            results = self.vector_store.similarity_search_with_scores(query, k=k)
+            if not self.documents_store:
+                logger.info("No documents in store")
+                return []
+            
+            # Generate query embedding
+            query_embedding = self.embeddings.embed_query(query)
+            
+            # Calculate similarity scores using cosine similarity
+            similarities = []
+            for doc_id, doc_data in self.documents_store.items():
+                doc_embedding = doc_data["embedding"]
+                # Simple cosine similarity
+                dot_product = sum(a * b for a, b in zip(query_embedding, doc_embedding))
+                norm_q = sum(x ** 2 for x in query_embedding) ** 0.5
+                norm_d = sum(x ** 2 for x in doc_embedding) ** 0.5
+                similarity = dot_product / (norm_q * norm_d) if norm_q > 0 and norm_d > 0 else 0
+                similarities.append((doc_id, similarity))
+            
+            # Sort by similarity and get top k
+            top_results = sorted(similarities, key=lambda x: x[1], reverse=True)[:k]
             
             documents = []
-            for doc, score in results:
+            for doc_id, score in top_results:
+                doc_data = self.documents_store[doc_id]
                 documents.append({
-                    "content": doc.page_content,
-                    "metadata": doc.metadata,
+                    "id": doc_id,
+                    "content": doc_data["content"],
+                    "metadata": doc_data["metadata"],
                     "relevance_score": float(score)
                 })
             
@@ -249,57 +261,4 @@ if __name__ == "__main__":
         result = engine.query_documents(query, k=3)
         print(f"Answer: {result.get('answer', 'No answer')}")
         print(f"Documents used: {result.get('document_count', 0)}")
-        print(f"{'='*60}")
-        logger.info(f"🔍 Generated SQL:\n{sql_query}")
-        
-        # Step 3: Execute with self-correction loop
-        for attempt in range(max_retries + 1):
-            result = self.execute_query(sql_query)
-            
-            if result["status"] == "success":
-                logger.info(f"✅ Query executed successfully ({result['row_count']} rows)")
-                return {
-                    "user_query": user_query,
-                    "sql_query": sql_query,
-                    "results": result,
-                    "attempts": attempt + 1,
-                    "timestamp": datetime.now().isoformat()
-                }
-            elif attempt < max_retries:
-                logger.warning(f"⚠️ Attempt {attempt + 1} failed, self-correcting...")
-                sql_query = self.validate_and_correct_query(user_query, sql_query, result.get("error"))
-        
-        # Return last attempt result
-        return {
-            "user_query": user_query,
-            "sql_query": sql_query,
-            "results": result,
-            "attempts": max_retries + 1,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-# Example usage
-if __name__ == "__main__":
-    # Initialize query engine
-    engine = DataLakeQueryEngine(trino_host="localhost", trino_port=8080)
-    
-    # Example SQL queries
-    test_queries = [
-        "SELECT COUNT(*) as total_count FROM iceberg.raw.sales",
-        "SELECT * FROM iceberg.raw.customers LIMIT 5",
-        "SELECT product_id, SUM(amount) as total FROM iceberg.raw.sales GROUP BY product_id"
-    ]
-    
-    for query in test_queries:
-        result = engine.execute_query(query)
-        print(f"\n{'='*60}")
-        print(f"SQL: {query}")
-        print(f"Status: {result['status']}")
-        if result['status'] == 'success':
-            print(f"Rows: {result['row_count']}")
-            print(f"Columns: {result['columns']}")
-        else:
-            print(f"Error: {result['error']}")
-        print(f"{'='*60}")
         print(f"{'='*60}")
