@@ -579,45 +579,46 @@ Document Ingestion (1M+ documents)
 
 ---
 
-## RAG Engine Architecture
+## Query Engine Architecture
 
-### Query Processing Pipeline
+### Query Execution Pipeline
 
 ```
-User Input (Natural Language)
+User Input (SQL Query)
     │
     ▼
-1. Text Preprocessing
-   - Normalize query
-   - Remove stop words
-   - Tokenize
+1. SQL Parsing
+   - Validate syntax
+   - Check table/column references
     │
     ▼
-2. Generate Query Embedding
-   - Ollama embedding model
-   - 768-dimensional vector
+2. Route to Trino
+   - Send query to Trino coordinator
+   - Trino determines execution plan
     │
     ▼
-3. Semantic Search (Chroma)
-   - Find similar table embeddings
-   - Return top-K results (k=5)
-   - Filter by metadata
+3. Execute on Iceberg
+   - Read from object storage (MinIO)
+   - Apply filters and projections
+   - Return results
     │
     ▼
-4. Retrieve Context
-   - Table names
-   - Column definitions
-   - Sample data
-   - Data types
+4. Format Results
+   - Extract columns
+   - Serialize rows
+   - Return JSON response
     │
     ▼
-5. Construct Prompt
-   - System prompt
-   - Context (retrieved tables)
-   - User query
-   - Examples (few-shot)
-    │
-    ▼
+Results JSON (Rows + Metadata)
+```
+
+---
+
+## API Documentation
+
+### FastAPI Endpoints
+
+#### 1. POST /query
 6. Generate SQL
    - Send to Ollama LLaMA2
    - Temperature: 0.1 (deterministic)
@@ -918,85 +919,91 @@ def notify_completion(validation_result):
 ### FastAPI Endpoints
 
 #### 1. POST /query
-Execute a natural language query against the data lake.
+Execute a SQL query against the data lake.
 
 **Request**:
 ```json
 {
-    "query": "What are the top 10 products by sales?",
-    "max_results": 100,
-    "timeout": 60
+    "sql": "SELECT product_id, SUM(sales) as total FROM iceberg.raw.sales GROUP BY product_id LIMIT 10"
 }
 ```
 
 **Response**:
 ```json
 {
-    "success": true,
-    "query_id": "uuid-123",
-    "sql_generated": "SELECT product_id, SUM(sales) FROM sales GROUP BY...",
-    "execution_time_ms": 1250,
-    "result_count": 10,
-    "results": [
-        {"product_id": 1, "sales": 50000},
+    "status": "success",
+    "columns": ["product_id", "total"],
+    "row_count": 10,
+    "rows": [
+        [1, 50000],
+        [2, 45000],
         ...
-    ]
+    ],
+    "timestamp": "2025-12-20T10:30:00Z"
 }
 ```
 
 **Error Response**:
 ```json
 {
-    "success": false,
-    "error": "Table 'sales' not found",
-    "suggestions": ["Did you mean 'sales_fact'?", "Check table names..."]
+    "status": "error",
+    "error": "Table 'iceberg.raw.sales' not found",
+    "row_count": 0,
+    "timestamp": "2025-12-20T10:30:00Z"
 }
 ```
 
-#### 2. GET /metadata/tables
-List all indexed tables in the data lake.
+#### 2. GET /tables
+List all available tables in the data lake.
 
 **Response**:
 ```json
 {
-    "tables": [
-        {
-            "schema": "public",
-            "name": "customers",
-            "columns": 15,
-            "rows": 1000000,
-            "indexed": true
-        },
-        ...
-    ]
+    "count": 150,
+    "tables": {
+        "iceberg.raw.customers": [
+            {"column": "id", "type": "bigint"},
+            {"column": "name", "type": "varchar"},
+            ...
+        ],
+        "iceberg.raw.sales": [
+            {"column": "sale_id", "type": "bigint"},
+            {"column": "amount", "type": "decimal"},
+            ...
+        ]
+    }
 }
 ```
 
-#### 3. POST /metadata/index
-Trigger background indexing of metadata into Chroma.
-
-**Request**:
-```json
-{
-    "schema_filter": "iceberg%",
-    "force_reindex": false
-}
-```
+#### 3. GET /health
+Service health check.
 
 **Response**:
 ```json
 {
-    "task_id": "uuid-456",
-    "status": "started",
-    "estimated_time": 60
+    "status": "healthy",
+    "query_engine": "initialized"
 }
 ```
 
-#### 4. POST /query/validate
-Validate SQL syntax without executing.
+#### 4. GET /
+API information and documentation.
 
-**Request**:
+**Response**:
 ```json
+{
+    "name": "Data Lake Query Engine",
+    "version": "1.0.0",
+    "endpoints": {
+        "health": "/health",
+        "query": "POST /query",
+        "tables": "GET /tables"
+    },
+    "docs": "/docs"
+}
+```
+
+---
 {
     "sql": "SELECT * FROM customers WHERE age > 18"
 }
