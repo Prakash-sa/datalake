@@ -1,35 +1,28 @@
-# RAG Query Engine for Data Lake
+# Data Lake Query Engine
 
-Agentic RAG system for natural language querying of Apache Iceberg tables in Trino. This module implements **adaptive self-correction** using LLM agents to generate SQL queries with semantic search over data lake metadata.
+SQL query execution engine for Apache Iceberg tables in Trino. This module provides a simple REST API for executing SQL queries and returning results.
 
 ## Features
 
-### 1. **Semantic Search over Metadata**
-- Indexes all Iceberg tables, columns, and schemas into a vector database (Chroma)
-- Uses similarity search to find relevant tables for a user query
-- Enables intelligent table discovery without explicit schema knowledge
+### 1. **Direct SQL Execution**
+- Execute SQL queries directly on Iceberg tables
+- Support for complex queries: aggregations, joins, filtering
+- Supports Iceberg time-travel queries
 
-### 2. **Agentic SQL Generation**
-- LLM-powered SQL generation from natural language (via Ollama)
-- Understands Trino-specific syntax and Iceberg features
-- Supports complex queries: aggregations, time-travel, ACID operations
+### 2. **Table Discovery**
+- Browse available Iceberg tables and their schemas
+- View column names and data types
 
-### 3. **Self-Correcting Execution (Key Innovation)**
-- Executes generated SQL and captures errors
-- **Automatically regenerates and corrects** failed queries
-- Implements iterative refinement loop for improved accuracy (~30% improvement in answer accuracy)
-- Configurable retry attempts (default: 2)
-
-### 4. **Full-Stack Integration**
-- **Backend**: FastAPI + LangChain + Trino + Ollama
-- **Frontend**: Next.js + React with real-time query execution
+### 3. **Full-Stack Integration**
+- **Backend**: FastAPI + Trino
+- **Frontend**: Next.js + React with query interface
 - **Containerized**: Docker Compose for easy deployment
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│         User (Natural Language Query)           │
+│         User (SQL Query)                        │
 └────────────────┬────────────────────────────────┘
                  │
                  ▼
@@ -42,9 +35,8 @@ Agentic RAG system for natural language querying of Apache Iceberg tables in Tri
 ┌─────────────────────────────────────────────────┐
 │          Backend (FastAPI)                      │
 │  ┌────────────────────────────────────────┐    │
-│  │ 1. Semantic Search (Chroma Vector DB) │    │
-│  │    - Retrieve relevant tables          │    │
-│  │    - Metadata context                  │    │
+│  │ 1. SQL Validation                      │    │
+│  │    - Parse SQL syntax                  │    │
 │  └────────┬───────────────────────────────┘    │
 │           │                                     │
 │  ┌────────▼───────────────────────────────┐    │

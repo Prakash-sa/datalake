@@ -1,49 +1,28 @@
 """
-Agentic RAG Query Engine for Data Lake
-Enables natural language queries on Iceberg tables using LLM agents with adaptive self-correction.
-Leverages Ollama for local LLM inference and semantic search for metadata discovery.
+Data Lake Query Engine
+Provides SQL query execution on Apache Iceberg tables via Trino.
 """
 
 import os
-import json
-from typing import Any, List, Optional
+from typing import Optional
 from datetime import datetime
 import logging
 
-from langchain_ollama import OllamaLLM
-from langchain_chroma import Chroma
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import DirectoryLoader
-from langchain.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, AIMessage
-from langgraph.graph import StateGraph
-from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
 import trino
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class QueryState(TypedDict):
-    """State for the RAG query agent."""
-    messages: Annotated[list, add_messages]
-    user_query: str
-    retrieved_metadata: str
-    generated_sql: str
-    query_result: Optional[dict]
-    error: Optional[str]
-
-
-class DataLakeRAGEngine:
+class DataLakeQueryEngine:
     """
-    RAG Agent for querying data lake with natural language.
-    Implements self-correcting query generation with semantic search over metadata.
+    Query Engine for Apache Iceberg tables on Trino.
+    Executes SQL queries and returns results.
     """
 
     def __init__(self, trino_host: str = "localhost", trino_port: int = 8080):
         """
-        Initialize the RAG engine.
+        Initialize the query engine.
         
         Args:
             trino_host: Trino server hostname
@@ -51,11 +30,7 @@ class DataLakeRAGEngine:
         """
         self.trino_host = trino_host
         self.trino_port = trino_port
-        self.llm = OllamaLLM(model="llama2", temperature=0.3)  # Can use llama3 if available
-        self.vector_store = None
-        self.metadata_cache = {}
         self._initialize_trino_connection()
-        self._setup_rag_pipeline()
 
     def _initialize_trino_connection(self):
         """Initialize Trino connection for metadata and query execution."""
@@ -69,6 +44,36 @@ class DataLakeRAGEngine:
         except Exception as e:
             logger.error(f"❌ Failed to connect to Trino: {e}")
             raise
+
+    def get_tables_info(self) -> dict:
+        """
+        Retrieve list of available tables and their schemas.
+        
+        Returns:
+            Dictionary of tables and columns
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            cursor.execute("""
+                SELECT table_schema, table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema LIKE 'iceberg%'
+                ORDER BY table_schema, table_name
+            """)
+            
+            tables = {}
+            for schema, table, column, dtype in cursor.fetchall():
+                table_key = f"{schema}.{table}"
+                if table_key not in tables:
+                    tables[table_key] = []
+                tables[table_key].append({"column": column, "type": dtype})
+            
+            cursor.close()
+            return tables
+        except Exception as e:
+            logger.error(f"❌ Failed to retrieve table info: {e}")
+            return {}
 
     def _setup_rag_pipeline(self):
         """Setup RAG components: vector store, metadata indexing."""
@@ -193,14 +198,16 @@ Generated SQL:
                 "status": "success",
                 "rows": rows,
                 "columns": columns,
-                "row_count": len(rows)
+                "row_count": len(rows),
+                "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
             logger.error(f"❌ Query execution failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
-                "row_count": 0
+                "row_count": 0,
+                "timestamp": datetime.now().isoformat()
             }
 
     def validate_and_correct_query(self, user_query: str, sql_query: str, execution_error: Optional[str] = None) -> str:
@@ -294,26 +301,25 @@ Corrected SQL:
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize RAG engine
-    rag = DataLakeRAGEngine(trino_host="localhost", trino_port=8080)
+    # Initialize query engine
+    engine = DataLakeQueryEngine(trino_host="localhost", trino_port=8080)
     
-    # Index metadata (run once)
-    try:
-        rag.index_metadata()
-    except:
-        logger.info("Metadata already indexed or indexing skipped")
-    
-    # Example queries
+    # Example SQL queries
     test_queries = [
-        "Show me total sales by region for the last quarter",
-        "What are the top 10 customers by revenue?",
-        "Get sales trends over time"
+        "SELECT COUNT(*) as total_count FROM iceberg.raw.sales",
+        "SELECT * FROM iceberg.raw.customers LIMIT 5",
+        "SELECT product_id, SUM(amount) as total FROM iceberg.raw.sales GROUP BY product_id"
     ]
     
     for query in test_queries:
-        result = rag.query_data_lake(query)
+        result = engine.execute_query(query)
         print(f"\n{'='*60}")
-        print(f"Query: {query}")
-        print(f"SQL: {result['sql_query']}")
-        print(f"Result: {result['results']}")
+        print(f"SQL: {query}")
+        print(f"Status: {result['status']}")
+        if result['status'] == 'success':
+            print(f"Rows: {result['row_count']}")
+            print(f"Columns: {result['columns']}")
+        else:
+            print(f"Error: {result['error']}")
+        print(f"{'='*60}")
         print(f"{'='*60}")

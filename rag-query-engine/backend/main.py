@@ -1,6 +1,6 @@
 """
-FastAPI Backend for RAG Query Engine
-Provides REST API endpoints for natural language querying of the data lake.
+FastAPI Backend for Data Lake Query Engine
+Provides REST API endpoints for executing SQL queries on Apache Iceberg tables.
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -10,12 +10,12 @@ from typing import Optional, List
 import logging
 import os
 
-from rag_engine import DataLakeRAGEngine
+from rag_engine import DataLakeQueryEngine
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Data Lake RAG Query Engine",
-    description="Natural language interface for querying Apache Iceberg tables",
+    title="Data Lake Query Engine",
+    description="REST API for executing SQL queries on Apache Iceberg tables",
     version="1.0.0"
 )
 
@@ -32,37 +32,37 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize RAG engine
+# Initialize query engine
 try:
-    rag_engine = DataLakeRAGEngine(
+    query_engine = DataLakeQueryEngine(
         trino_host=os.getenv("TRINO_HOST", "localhost"),
         trino_port=int(os.getenv("TRINO_PORT", "8080"))
     )
-    logger.info("✅ RAG Engine initialized")
+    logger.info("✅ Query Engine initialized")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize RAG Engine: {e}")
-    rag_engine = None
+    logger.error(f"❌ Failed to initialize Query Engine: {e}")
+    query_engine = None
 
 
 # Pydantic models
 class QueryRequest(BaseModel):
-    """Request model for natural language queries."""
-    query: str
-    max_retries: int = 2
+    """Request model for SQL queries."""
+    sql: str
 
 
 class QueryResponse(BaseModel):
     """Response model for query results."""
-    user_query: str
-    sql_query: str
-    results: dict
-    attempts: int
+    status: str
+    rows: Optional[List] = None
+    columns: Optional[List] = None
+    row_count: int
+    error: Optional[str] = None
     timestamp: str
 
 
-class MetadataIndexRequest(BaseModel):
-    """Request model for metadata indexing."""
-    force_reindex: bool = False
+class TableInfo(BaseModel):
+    """Request model for getting table info."""
+    pass
 
 
 @app.get("/health")
@@ -70,133 +70,73 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "rag_engine": "initialized" if rag_engine else "not_initialized"
+        "query_engine": "initialized" if query_engine else "not_initialized"
     }
 
 
 @app.post("/query", response_model=QueryResponse)
-async def query_data_lake(request: QueryRequest):
+async def execute_query(request: QueryRequest):
     """
-    Natural language query endpoint.
-    
-    Accepts natural language queries and returns:
-    - Generated SQL
-    - Query results
-    - Number of self-correction attempts
+    Execute SQL query on the data lake.
     
     Example:
     {
-        "query": "Show me total sales by region",
-        "max_retries": 2
+        "sql": "SELECT * FROM iceberg.raw.sales LIMIT 10"
     }
     """
-    if not rag_engine:
-        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
+    if not query_engine:
+        raise HTTPException(status_code=503, detail="Query Engine not initialized")
+    
+    if not request.sql or request.sql.strip() == "":
+        raise HTTPException(status_code=400, detail="SQL query is required")
     
     try:
-        logger.info(f"📝 Processing query: {request.query}")
-        result = rag_engine.query_data_lake(request.query, max_retries=request.max_retries)
+        logger.info(f"🔍 Executing query: {request.sql[:100]}...")
+        result = query_engine.execute_query(request.sql)
         
-        return QueryResponse(**result)
+        return QueryResponse(
+            status=result["status"],
+            rows=result.get("rows"),
+            columns=result.get("columns"),
+            row_count=result.get("row_count", 0),
+            error=result.get("error"),
+            timestamp=result.get("timestamp")
+        )
     except Exception as e:
-        logger.error(f"❌ Query processing failed: {e}")
+        logger.error(f"❌ Query execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/metadata/index")
-async def index_metadata(request: MetadataIndexRequest, background_tasks: BackgroundTasks):
-    """
-    Trigger metadata indexing for semantic search.
-    Returns immediately and indexes asynchronously.
-    
-    Example:
-    {
-        "force_reindex": false
-    }
-    """
-    if not rag_engine:
-        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
+@app.get("/tables")
+async def get_tables():
+    """Retrieve list of available tables and their schemas."""
+    if not query_engine:
+        raise HTTPException(status_code=503, detail="Query Engine not initialized")
     
     try:
-        background_tasks.add_task(rag_engine.index_metadata)
+        tables = query_engine.get_tables_info()
         return {
-            "status": "indexing_started",
-            "message": "Metadata indexing started in background"
+            "count": len(tables),
+            "tables": tables
         }
     except Exception as e:
-        logger.error(f"❌ Metadata indexing failed: {e}")
+        logger.error(f"❌ Failed to retrieve tables: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/metadata/tables")
-async def get_indexed_tables():
-    """Retrieve list of indexed tables from metadata cache."""
-    if not rag_engine:
-        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
-    
-    tables = {}
-    for table_name, columns in rag_engine.metadata_cache.items():
-        if table_name not in tables:
-            tables[table_name] = []
-        tables[table_name].append(columns)
-    
-    return {
-        "count": len(tables),
-        "tables": tables
-    }
-
-
-@app.post("/query/validate")
-async def validate_sql(request: dict):
-    """
-    Validate generated SQL without executing it.
-    
-    Example:
-    {
-        "sql": "SELECT * FROM iceberg.raw.sales"
-    }
-    """
-    sql = request.get("sql")
-    if not sql:
-        raise HTTPException(status_code=400, detail="SQL query required")
-    
-    # Basic validation (syntax check via Trino)
-    if not rag_engine:
-        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
-    
-    try:
-        # Prepend EXPLAIN to validate without execution
-        cursor = rag_engine.conn.cursor()
-        cursor.execute(f"EXPLAIN {sql}")
-        cursor.close()
-        
-        return {
-            "valid": True,
-            "message": "SQL is valid"
-        }
-    except Exception as e:
-        return {
-            "valid": False,
-            "error": str(e)
-        }
 
 
 @app.get("/")
 async def root():
     """API documentation endpoint."""
     return {
-        "name": "Data Lake RAG Query Engine",
+        "name": "Data Lake Query Engine",
         "version": "1.0.0",
         "endpoints": {
             "health": "/health",
             "query": "POST /query",
-            "metadata_index": "POST /metadata/index",
-            "indexed_tables": "GET /metadata/tables",
-            "validate_sql": "POST /query/validate"
+            "tables": "GET /tables"
         },
         "docs": "/docs"
     }
-
 
 if __name__ == "__main__":
     import uvicorn
