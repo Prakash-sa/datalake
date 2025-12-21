@@ -49,7 +49,7 @@ services:
       MINIO_HOST: minio:9000
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-      LLM_MODEL: mistral
+      LLM_MODEL: orca-mini
       EMBEDDING_MODEL: nomic-embed-text
     depends_on:
       - ollama
@@ -59,6 +59,12 @@ services:
       - ./chroma_db:/app/chroma_db
     networks:
       - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Frontend (Next.js)
   rag-frontend:

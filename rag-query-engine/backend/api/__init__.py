@@ -2,6 +2,7 @@
 API Layer - HTTP routes and controllers
 """
 
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from typing import List
 
@@ -29,7 +30,12 @@ def initialize_rag_service(service: DocumentRAGService):
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint for monitoring and orchestration."""
-    return {"status": "healthy"}
+    if not rag_service:
+        # Service still initializing
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="RAG service initializing")
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
 @router.get("/stats", response_model=StatsResponse)
