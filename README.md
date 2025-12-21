@@ -179,6 +179,8 @@ User Results
 - [LangChain](https://python.langchain.com/) - LLM framework
 - [Ollama](https://ollama.ai/) - Local LLM
 - [Chroma](https://www.trychroma.com/) - Vector database
+- [Medium RAG](https://medium.com/@sheltoncarr/rag-with-apache-airflow-llamaindex-and-qdrant-d6077c6e0e7f)
+- [Airflow RAG](https://krishnaprasad-k.medium.com/airflow-dag-for-modern-rag-applications-e8dc876c114c)
 
 ---
 
