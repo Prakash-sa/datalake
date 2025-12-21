@@ -1,31 +1,33 @@
-# 🚀 Enterprise Document Lifecycle Management Platform
+# 🚀 Enterprise Document RAG Platform
 
-![Datalake Architecture](datalake.jpg)
+![Document RAG Architecture](datalake.jpg)
 
-## 🎯 Enterprise Document Management at Scale
+## 🎯 Semantic Search & LLM Analysis at Scale
 
-A production-grade **intelligent document lifecycle management system** for processing, indexing, and querying **1M+ structured and unstructured enterprise documents**. Powered by:
+A production-grade **Retrieval Augmented Generation (RAG) system** for intelligent document discovery and analysis across **1M+ structured and unstructured enterprise documents**. Powered by:
 
-- **Apache Airflow** with **Dynamic DAGs** for adaptive pipeline generation
+- **Apache Airflow** with **Dynamic DAGs** for adaptive document processing pipelines
 - **Kubernetes Event-Driven Autoscaling (KEDA)** for elastic resource management
-- **Data Lake Query Engine** for SQL query execution on document metadata
-- **Apache Iceberg** for ACID-compliant document metadata management
-- **Trino** for federated querying across document repositories
+- **Document RAG Engine** for semantic search and LLM-powered document analysis
+- **Chroma** for vector embeddings and semantic similarity search
+- **Ollama** for local LLM inference (mistral, llama2, etc.)
 - **MinIO** for S3-compatible document storage at petabyte scale
+- **LangChain** for RAG orchestration and prompt engineering
 
-Designed for enterprises managing complex document workflows with unpredictable scale, real-time ingestion, and efficient document discovery requirements.
+Designed for enterprises needing intelligent document discovery, semantic search, and AI-powered analysis on massive document collections with real-time ingestion and adaptive scaling.
 
 ## 🏗️ Core Components
 
 | Component       | Role                                                                 |
 |----------------|-------------------------------------------------------------------------|
-| **Airflow + Dynamic DAGs** | Adaptive pipeline orchestration for document workflows |
+| **Airflow + Dynamic DAGs** | Adaptive pipeline orchestration for document ingestion |
 | **KEDA** | Event-driven autoscaling based on document queue depth |
-| **Query Engine** | SQL execution and document metadata queries |
+| **RAG Engine** | Semantic search and LLM-powered document analysis |
+| **Chroma** | Vector database for semantic embeddings |
+| **Ollama** | Local LLM inference for document analysis |
 | **Kubernetes** | Container orchestration for elastic scalability |
-| **Trino** | Federated SQL querying across document metadata |
-| **Apache Iceberg** | ACID-compliant metadata management with time-travel |
 | **MinIO** | S3-compatible object storage for documents |
+| **LangChain** | RAG framework for orchestration and prompting |
 
 ## 📖 Documentation
 
@@ -35,8 +37,9 @@ This project includes **two comprehensive documentation files**:
 **Complete setup and deployment guide**
 - Prerequisites and system checks
 - Quick start instructions
-- Component-by-component setup (Trino, Airflow, RAG)
+- Component-by-component setup (Ollama, Chroma, Airflow, RAG Engine)
 - Docker configuration and network setup
+- Document indexing workflows
 - Troubleshooting guide for common issues
 - Performance optimization tips
 - Monitoring and health checks
@@ -45,12 +48,12 @@ This project includes **two comprehensive documentation files**:
 ### 2. [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)
 **Technical architecture and implementation details**
 - System overview and design principles
-- Architecture diagrams (high-level, Airflow, data flow)
-- Component deep-dive (Trino, Iceberg, Airflow, Ollama, Chroma, LangChain)
+- Architecture diagrams (high-level, document flow, RAG pipeline)
+- Component deep-dive (Ollama, Chroma, Airflow, LangChain, MinIO)
 - RAG engine architecture with code examples
-- Airflow pipeline specifications and task details
+- Airflow pipeline specifications for document processing
 - REST API documentation with examples
-- Complete end-to-end data flow explanation
+- Complete end-to-end document query flow explanation
 - Technology stack and performance characteristics
 
 ## 🚀 Quick Start

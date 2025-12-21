@@ -1,21 +1,22 @@
 """
-FastAPI Backend for Data Lake Query Engine
-Provides REST API endpoints for executing SQL queries on Apache Iceberg tables.
+FastAPI Backend for Document RAG Engine
+Provides REST API endpoints for semantic search and LLM-powered document analysis.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import logging
 import os
+import json
 
-from rag_engine import DataLakeQueryEngine
+from rag_engine import DocumentRAGEngine
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Data Lake Query Engine",
-    description="REST API for executing SQL queries on Apache Iceberg tables",
+    title="Document RAG Engine",
+    description="REST API for semantic search and LLM-powered analysis on enterprise documents",
     version="1.0.0"
 )
 
@@ -32,37 +33,39 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize query engine
+# Initialize RAG engine
 try:
-    query_engine = DataLakeQueryEngine(
-        trino_host=os.getenv("TRINO_HOST", "localhost"),
-        trino_port=int(os.getenv("TRINO_PORT", "8080"))
+    rag_engine = DocumentRAGEngine(
+        chroma_path=os.getenv("CHROMA_PATH", "./chroma_db"),
+        ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434")
     )
-    logger.info("✅ Query Engine initialized")
+    logger.info("✅ Document RAG Engine initialized")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize Query Engine: {e}")
-    query_engine = None
+    logger.error(f"❌ Failed to initialize RAG Engine: {e}")
+    rag_engine = None
 
 
 # Pydantic models
-class QueryRequest(BaseModel):
-    """Request model for SQL queries."""
-    sql: str
+class DocumentQueryRequest(BaseModel):
+    """Request model for document queries."""
+    query: str
+    k: int = 5  # Number of documents to retrieve
 
 
-class QueryResponse(BaseModel):
-    """Response model for query results."""
+class DocumentResponse(BaseModel):
+    """Response model for document RAG results."""
     status: str
-    rows: Optional[List] = None
-    columns: Optional[List] = None
-    row_count: int
+    query: str
+    answer: Optional[str] = None
+    retrieved_documents: Optional[List] = None
+    document_count: int = 0
     error: Optional[str] = None
     timestamp: str
 
 
-class TableInfo(BaseModel):
-    """Request model for getting table info."""
-    pass
+class DocumentIndexRequest(BaseModel):
+    """Request model for indexing documents."""
+    documents: List[dict]  # List of {id, content, metadata}
 
 
 @app.get("/health")
@@ -70,57 +73,111 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "query_engine": "initialized" if query_engine else "not_initialized"
+        "rag_engine": "initialized" if rag_engine else "not_initialized"
     }
 
 
-@app.post("/query", response_model=QueryResponse)
-async def execute_query(request: QueryRequest):
+@app.post("/query", response_model=DocumentResponse)
+async def query_documents(request: DocumentQueryRequest):
     """
-    Execute SQL query on the data lake.
+    Query documents using RAG (Retrieval Augmented Generation).
+    Retrieves relevant documents and generates an LLM-powered response.
     
     Example:
     {
-        "sql": "SELECT * FROM iceberg.raw.sales LIMIT 10"
+        "query": "What is Apache Airflow and how does it work?",
+        "k": 5
     }
     """
-    if not query_engine:
-        raise HTTPException(status_code=503, detail="Query Engine not initialized")
+    if not rag_engine:
+        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
     
-    if not request.sql or request.sql.strip() == "":
-        raise HTTPException(status_code=400, detail="SQL query is required")
+    if not request.query or request.query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query is required")
     
     try:
-        logger.info(f"🔍 Executing query: {request.sql[:100]}...")
-        result = query_engine.execute_query(request.sql)
+        logger.info(f"🔍 Processing document query: {request.query[:100]}...")
+        result = rag_engine.query_documents(request.query, k=request.k)
         
-        return QueryResponse(
+        return DocumentResponse(
             status=result["status"],
-            rows=result.get("rows"),
-            columns=result.get("columns"),
-            row_count=result.get("row_count", 0),
+            query=result.get("query"),
+            answer=result.get("answer"),
+            retrieved_documents=result.get("retrieved_documents"),
+            document_count=result.get("document_count", 0),
             error=result.get("error"),
             timestamp=result.get("timestamp")
         )
     except Exception as e:
-        logger.error(f"❌ Query execution failed: {e}")
+        logger.error(f"❌ Query processing failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/tables")
-async def get_tables():
-    """Retrieve list of available tables and their schemas."""
-    if not query_engine:
-        raise HTTPException(status_code=503, detail="Query Engine not initialized")
+@app.post("/documents/index")
+async def index_documents(request: DocumentIndexRequest):
+    """
+    Index documents into the vector store for semantic search.
+    
+    Example:
+    {
+        "documents": [
+            {
+                "id": "doc1",
+                "content": "Document text content...",
+                "metadata": {"source": "pdf", "date": "2024-01-01"}
+            }
+        ]
+    }
+    """
+    if not rag_engine:
+        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
+    
+    if not request.documents:
+        raise HTTPException(status_code=400, detail="Documents list is required")
     
     try:
-        tables = query_engine.get_tables_info()
+        logger.info(f"📄 Indexing {len(request.documents)} documents...")
+        result = rag_engine.index_documents(request.documents)
+        
         return {
-            "count": len(tables),
-            "tables": tables
+            "status": result["status"],
+            "documents_indexed": result.get("documents_indexed", 0),
+            "error": result.get("error"),
+            "timestamp": result.get("timestamp")
         }
     except Exception as e:
-        logger.error(f"❌ Failed to retrieve tables: {e}")
+        logger.error(f"❌ Document indexing failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/documents/search")
+async def search_documents(query: str, k: int = 5):
+    """
+    Semantic search on indexed documents without LLM generation.
+    Returns relevant documents ranked by similarity score.
+    
+    Query parameters:
+        - query: Search query string
+        - k: Number of results to return (default: 5)
+    """
+    if not rag_engine:
+        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
+    
+    if not query or query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query is required")
+    
+    try:
+        logger.info(f"🔍 Searching documents: {query[:100]}...")
+        results = rag_engine.search_documents(query, k=k)
+        
+        return {
+            "status": "success",
+            "query": query,
+            "count": len(results),
+            "documents": results
+        }
+    except Exception as e:
+        logger.error(f"❌ Search failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -128,12 +185,14 @@ async def get_tables():
 async def root():
     """API documentation endpoint."""
     return {
-        "name": "Data Lake Query Engine",
+        "name": "Document RAG Engine",
         "version": "1.0.0",
+        "description": "Semantic search and LLM-powered analysis on enterprise documents",
         "endpoints": {
-            "health": "/health",
-            "query": "POST /query",
-            "tables": "GET /tables"
+            "health": "GET /health",
+            "query": "POST /query (natural language query with LLM analysis)",
+            "search": "POST /documents/search (semantic search without LLM)",
+            "index": "POST /documents/index (add documents to vector store)"
         },
         "docs": "/docs"
     }

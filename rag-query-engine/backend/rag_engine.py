@@ -1,275 +1,255 @@
 """
-Data Lake Query Engine
-Provides SQL query execution on Apache Iceberg tables via Trino.
+Document RAG Engine
+Semantic search and LLM-powered analysis on structured and unstructured enterprise documents.
 """
 
 import os
-from typing import Optional
+from typing import List
 from datetime import datetime
 import logging
+import json
 
-import trino
+from langchain_ollama import OllamaEmbeddings, OllamaLLM
+from langchain_chroma import Chroma
+from langchain.prompts import ChatPromptTemplate
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class DataLakeQueryEngine:
+class DocumentRAGEngine:
     """
-    Query Engine for Apache Iceberg tables on Trino.
-    Executes SQL queries and returns results.
+    RAG Engine for semantic search and LLM analysis on enterprise documents.
+    Supports structured and unstructured data (PDFs, documents, databases, etc.)
     """
 
-    def __init__(self, trino_host: str = "localhost", trino_port: int = 8080):
+    def __init__(self, chroma_path: str = "./chroma_db", ollama_url: str = "http://localhost:11434"):
         """
-        Initialize the query engine.
+        Initialize the document RAG engine.
         
         Args:
-            trino_host: Trino server hostname
-            trino_port: Trino server port
+            chroma_path: Path to Chroma vector database
+            ollama_url: URL to Ollama LLM service
         """
-        self.trino_host = trino_host
-        self.trino_port = trino_port
-        self._initialize_trino_connection()
+        self.chroma_path = chroma_path
+        self.ollama_url = ollama_url
+        self.embeddings = None
+        self.llm = None
+        self.vector_store = None
+        self._initialize_components()
 
-    def _initialize_trino_connection(self):
-        """Initialize Trino connection for metadata and query execution."""
+    def _initialize_components(self):
+        """Initialize RAG components: embeddings, LLM, vector store."""
         try:
-            self.conn = trino.dbapi.connect(
-                host=self.trino_host,
-                port=self.trino_port,
-                user="trino"
+            # Initialize embeddings model
+            self.embeddings = OllamaEmbeddings(
+                model="nomic-embed-text",
+                base_url=self.ollama_url
             )
-            logger.info("✅ Trino connection established")
+            logger.info("✅ Embedding model initialized")
+            
+            # Initialize LLM
+            self.llm = OllamaLLM(model="mistral", base_url=self.ollama_url, temperature=0.3)
+            logger.info("✅ LLM initialized")
+            
+            # Initialize vector store
+            self.vector_store = Chroma(
+                collection_name="documents",
+                persist_directory=self.chroma_path,
+                embedding_function=self.embeddings
+            )
+            logger.info("✅ Vector store initialized")
         except Exception as e:
-            logger.error(f"❌ Failed to connect to Trino: {e}")
+            logger.error(f"❌ Failed to initialize RAG components: {e}")
             raise
 
-    def get_tables_info(self) -> dict:
+    def index_documents(self, documents: List[dict]) -> dict:
         """
-        Retrieve list of available tables and their schemas.
-        
-        Returns:
-            Dictionary of tables and columns
-        """
-        try:
-            cursor = self.conn.cursor()
-            
-            cursor.execute("""
-                SELECT table_schema, table_name, column_name, data_type
-                FROM information_schema.columns
-                WHERE table_schema LIKE 'iceberg%'
-                ORDER BY table_schema, table_name
-            """)
-            
-            tables = {}
-            for schema, table, column, dtype in cursor.fetchall():
-                table_key = f"{schema}.{table}"
-                if table_key not in tables:
-                    tables[table_key] = []
-                tables[table_key].append({"column": column, "type": dtype})
-            
-            cursor.close()
-            return tables
-        except Exception as e:
-            logger.error(f"❌ Failed to retrieve table info: {e}")
-            return {}
-
-    def _setup_rag_pipeline(self):
-        """Setup RAG components: vector store, metadata indexing."""
-        # Initialize vector store (Chroma)
-        self.vector_store = Chroma(
-            collection_name="iceberg_metadata",
-            persist_directory="./chroma_db"
-        )
-        logger.info("✅ Vector store initialized")
-
-    def index_metadata(self):
-        """
-        Index data lake metadata (tables, columns, schemas) into vector store.
-        Enables semantic search over data lake structure.
-        """
-        try:
-            cursor = self.conn.cursor()
-            
-            # Fetch all Iceberg tables and their schemas
-            cursor.execute("""
-                SELECT table_schema, table_name, column_name, data_type
-                FROM information_schema.columns
-                WHERE table_schema LIKE 'iceberg%'
-                ORDER BY table_schema, table_name
-            """)
-            
-            metadata_docs = []
-            for schema, table, column, dtype in cursor.fetchall():
-                doc_text = f"""
-                Table: {schema}.{table}
-                Column: {column}
-                Type: {dtype}
-                """
-                metadata_docs.append(doc_text)
-                self.metadata_cache[f"{schema}.{table}"] = {"column": column, "type": dtype}
-            
-            # Index metadata into vector store
-            if metadata_docs:
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-                splits = text_splitter.split_text("\n".join(metadata_docs))
-                self.vector_store.add_texts(texts=splits)
-                logger.info(f"✅ Indexed {len(splits)} metadata chunks")
-            
-            cursor.close()
-        except Exception as e:
-            logger.error(f"❌ Metadata indexing failed: {e}")
-            raise
-
-    def retrieve_relevant_tables(self, user_query: str, k: int = 5) -> str:
-        """
-        Retrieve relevant table metadata using semantic search.
+        Index documents into the vector store.
         
         Args:
-            user_query: Natural language query
-            k: Number of relevant results to retrieve
+            documents: List of document dictionaries with 'id', 'content', 'metadata'
             
         Returns:
-            Formatted metadata context
+            Indexing statistics
         """
         try:
-            results = self.vector_store.similarity_search(user_query, k=k)
-            context = "\n".join([doc.page_content for doc in results])
-            return context if context else "No relevant tables found."
-        except Exception as e:
-            logger.warning(f"⚠️ Semantic search failed: {e}")
-            return "Metadata retrieval unavailable."
-
-    def generate_sql_query(self, user_query: str, metadata_context: str) -> str:
-        """
-        Generate SQL query from natural language using LLM.
-        
-        Args:
-            user_query: User's natural language query
-            metadata_context: Retrieved metadata context
+            logger.info(f"📄 Indexing {len(documents)} documents...")
             
-        Returns:
-            Generated SQL query
-        """
-        prompt = ChatPromptTemplate.from_template("""
-You are an expert SQL query generator for Apache Iceberg tables in Trino.
-Your task is to convert natural language queries to SQL.
-
-Available Iceberg Tables and Metadata:
-{metadata}
-
-User Query: {query}
-
-Instructions:
-1. Generate valid Trino SQL syntax
-2. Use the correct schema and table names from metadata
-3. For time-based queries, use Iceberg's time-travel syntax if needed
-4. Return ONLY the SQL query without explanation
-5. Ensure the query is optimized for analytical workloads
-
-Generated SQL:
-""")
-        
-        response = self.llm.invoke(prompt.format(metadata=metadata_context, query=user_query))
-        return response.strip()
-
-    def execute_query(self, sql_query: str) -> dict:
-        """
-        Execute SQL query on Trino.
-        
-        Args:
-            sql_query: SQL query to execute
+            doc_texts = []
+            doc_ids = []
+            doc_metadatas = []
             
-        Returns:
-            Query results as dictionary
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(sql_query)
+            for doc in documents:
+                doc_texts.append(doc.get('content', ''))
+                doc_ids.append(doc.get('id', ''))
+                doc_metadatas.append(doc.get('metadata', {}))
             
-            # Fetch column names and data
-            columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            
-            cursor.close()
+            # Add to vector store
+            if doc_texts:
+                self.vector_store.add_texts(
+                    texts=doc_texts,
+                    ids=doc_ids,
+                    metadatas=doc_metadatas
+                )
+                logger.info(f"✅ Indexed {len(doc_texts)} documents")
             
             return {
                 "status": "success",
-                "rows": rows,
-                "columns": columns,
-                "row_count": len(rows),
+                "documents_indexed": len(documents),
                 "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"❌ Query execution failed: {e}")
+            logger.error(f"❌ Document indexing failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
-                "row_count": 0,
                 "timestamp": datetime.now().isoformat()
             }
 
-    def validate_and_correct_query(self, user_query: str, sql_query: str, execution_error: Optional[str] = None) -> str:
+    def search_documents(self, query: str, k: int = 5) -> List[dict]:
         """
-        Self-correcting mechanism: regenerate query if execution fails.
-        Implements adaptive error handling and query refinement.
+        Search for relevant documents using semantic similarity.
         
         Args:
-            user_query: Original user query
-            sql_query: Previously generated SQL
-            execution_error: Error message from failed execution
+            query: Search query
+            k: Number of results to return
             
         Returns:
-            Corrected SQL query
+            List of relevant documents with scores
         """
-        if not execution_error:
-            return sql_query
+        try:
+            logger.info(f"🔍 Searching for: {query}")
+            
+            results = self.vector_store.similarity_search_with_scores(query, k=k)
+            
+            documents = []
+            for doc, score in results:
+                documents.append({
+                    "content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "relevance_score": float(score)
+                })
+            
+            logger.info(f"✅ Found {len(documents)} relevant documents")
+            return documents
+        except Exception as e:
+            logger.error(f"❌ Document search failed: {e}")
+            return []
+
+    def query_documents(self, user_query: str, k: int = 5) -> dict:
+        """
+        End-to-end RAG pipeline: search documents → retrieve context → generate response.
         
-        logger.info("🔄 Attempting query self-correction...")
-        
-        prompt = ChatPromptTemplate.from_template("""
-The following SQL query failed with an error. Fix it and generate a corrected version.
+        Args:
+            user_query: Natural language query about documents
+            k: Number of documents to retrieve
+            
+        Returns:
+            RAG response with retrieved documents and LLM answer
+        """
+        try:
+            logger.info(f"📝 Processing document query: {user_query}")
+            
+            # Step 1: Search for relevant documents
+            relevant_docs = self.search_documents(user_query, k=k)
+            
+            if not relevant_docs:
+                return {
+                    "status": "no_results",
+                    "query": user_query,
+                    "message": "No relevant documents found",
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+            # Step 2: Prepare context from retrieved documents
+            context = "\n\n".join([
+                f"Document {i+1} (Relevance: {doc['relevance_score']:.2f}):\n{doc['content'][:500]}"
+                for i, doc in enumerate(relevant_docs)
+            ])
+            
+            logger.info(f"📚 Retrieved context from {len(relevant_docs)} documents")
+            
+            # Step 3: Generate response using LLM
+            prompt = ChatPromptTemplate.from_template("""
+Based on the following documents, answer the user's question. 
+Be specific and cite the relevant documents.
 
-Original User Query: {user_query}
-Failed SQL: {sql_query}
-Error: {error}
+Documents:
+{context}
 
-Instructions:
-1. Analyze the error and identify the issue
-2. Generate a corrected SQL query
-3. Return ONLY the corrected SQL without explanation
+User Question: {query}
 
-Corrected SQL:
+Answer:
 """)
-        
-        corrected = self.llm.invoke(prompt.format(
-            user_query=user_query,
-            sql_query=sql_query,
-            error=execution_error
-        ))
-        return corrected.strip()
-
-    def query_data_lake(self, user_query: str, max_retries: int = 2) -> dict:
-        """
-        End-to-end RAG pipeline: retrieve metadata → generate SQL → execute → validate.
-        Improves answer accuracy through iterative refinement.
-        
-        Args:
-            user_query: Natural language query
-            max_retries: Number of self-correction attempts
             
-        Returns:
-            Query results with metadata
-        """
-        logger.info(f"📝 Processing query: {user_query}")
-        
-        # Step 1: Retrieve relevant metadata
-        metadata = self.retrieve_relevant_tables(user_query)
-        logger.info(f"📚 Retrieved metadata context ({len(metadata)} chars)")
-        
-        # Step 2: Generate initial SQL
-        sql_query = self.generate_sql_query(user_query, metadata)
+            response_text = self.llm.invoke(prompt.format(context=context, query=user_query))
+            logger.info(f"✅ Generated response")
+            
+            return {
+                "status": "success",
+                "query": user_query,
+                "answer": response_text.strip(),
+                "retrieved_documents": relevant_docs,
+                "document_count": len(relevant_docs),
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"❌ Document query failed: {e}")
+            return {
+                "status": "error",
+                "query": user_query,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+
+# Example usage
+if __name__ == "__main__":
+    # Initialize RAG engine
+    engine = DocumentRAGEngine(
+        chroma_path="./chroma_db",
+        ollama_url="http://localhost:11434"
+    )
+    
+    # Example documents to index
+    sample_documents = [
+        {
+            "id": "doc1",
+            "content": "Apache Iceberg is a table format designed for huge analytic tables. It supports arbitrary schemas and partitioning.",
+            "metadata": {"source": "docs", "type": "documentation"}
+        },
+        {
+            "id": "doc2",
+            "content": "Trino is a distributed SQL query engine for big data analytics. It can query data where it lives.",
+            "metadata": {"source": "docs", "type": "documentation"}
+        },
+        {
+            "id": "doc3",
+            "content": "Apache Airflow is a platform to programmatically author, schedule and monitor workflows.",
+            "metadata": {"source": "docs", "type": "documentation"}
+        }
+    ]
+    
+    # Index documents
+    print("\n=== Indexing Documents ===")
+    index_result = engine.index_documents(sample_documents)
+    print(json.dumps(index_result, indent=2))
+    
+    # Query documents
+    test_queries = [
+        "What is Iceberg and what is it designed for?",
+        "Tell me about Trino",
+        "How does Airflow work?"
+    ]
+    
+    for query in test_queries:
+        print(f"\n{'='*60}")
+        print(f"Query: {query}")
+        result = engine.query_documents(query, k=3)
+        print(f"Answer: {result.get('answer', 'No answer')}")
+        print(f"Documents used: {result.get('document_count', 0)}")
+        print(f"{'='*60}")
         logger.info(f"🔍 Generated SQL:\n{sql_query}")
         
         # Step 3: Execute with self-correction loop
