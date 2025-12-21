@@ -187,10 +187,14 @@ class DocumentRAGService:
             relevant_docs = self.search_documents(user_query, k=k)
 
             if not relevant_docs:
+                processing_time = (datetime.now() - start_time).total_seconds()
                 return {
                     "status": "no_results",
                     "query": user_query,
-                    "message": "No relevant documents found",
+                    "answer": "No relevant documents found in the knowledge base.",
+                    "retrieved_documents": [],
+                    "document_count": 0,
+                    "processing_time_seconds": round(processing_time, 2),
                 }
 
             # Prepare context
