@@ -1,46 +1,62 @@
-# Complete Setup & Deployment Guide
+# Complete Setup & Deployment Guide: Enterprise Document Platform
 
-> **Comprehensive guide covering installation, configuration, and deployment of the entire data lake system with RAG & Airflow integration.**
+> **Comprehensive guide covering development setup and production deployment with Kubernetes, KEDA autoscaling, and Dynamic DAGs for 1M+ document processing.**
 
 ---
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Quick Start](#quick-start)
-3. [Component Setup](#component-setup)
-4. [Airflow + RAG Integration](#airflow--rag-integration)
-5. [Docker Configuration](#docker-configuration)
-6. [Troubleshooting](#troubleshooting)
-7. [Performance Optimization](#performance-optimization)
+2. [Quick Start (Docker Compose)](#quick-start-docker-compose)
+3. [Production Deployment (Kubernetes + KEDA)](#production-deployment-kubernetes--keda)
+4. [Component Setup](#component-setup)
+5. [Dynamic DAG Configuration](#dynamic-dag-configuration)
+6. [KEDA Installation & Configuration](#keda-installation--configuration)
+7. [Airflow + RAG Integration](#airflow--rag-integration)
+8. [Kubernetes Manifests](#kubernetes-manifests)
+9. [Monitoring & Scaling](#monitoring--scaling)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Prerequisites
 
+### Development Environment
 - **Docker & Docker Compose** (v20.10+)
 - **Python** 3.11+ (for local development)
 - **Git** (for version control)
 - **8GB RAM minimum** (for all services)
 - **20GB disk space** (for data volumes)
 
+### Production Environment (Kubernetes + KEDA)
+- **Kubernetes Cluster** (v1.24+)
+  - 3+ worker nodes minimum
+  - 16GB+ RAM per node
+  - 100GB+ disk per node
+  - Network policies enabled
+- **kubectl** CLI (v1.24+)
+- **Helm 3** (for package management)
+- **KEDA** (v2.12+)
+- **Persistent Volume Provisioner** (NFS, EBS, etc.)
+- **Monitoring** (Prometheus + Grafana optional)
+
 ### System Check
 
 ```bash
-# Verify Docker installation
+# Development environment
 docker --version
 docker-compose --version
-
-# Verify Python
 python3 --version
 
-# Check available resources
-docker info | grep Memory
+# Production environment (optional)
+kubectl version --client
+helm version
+keda --version  # After KEDA installation
 ```
 
 ---
 
-## Quick Start
+## Quick Start (Docker Compose)
 
 ### 1. Clone and Navigate to Project
 
@@ -82,7 +98,344 @@ open http://localhost:8080
 # Airflow Web UI
 open http://localhost:8080
 
-# RAG Query Engine Frontend
+# RAG Query Engine
+open http://localhost:3000
+
+# API Backend
+curl http://localhost:8000
+```
+
+---
+
+## Production Deployment (Kubernetes + KEDA)
+
+### Architecture
+
+```
+┌─────────────────────────────────────┐
+│    Kubernetes Cluster (3+ nodes)    │
+├─────────────────────────────────────┤
+│  Namespaces:                        │
+│  ├─ airflow (orchestration)         │
+│  ├─ rag-engine (query engine)       │
+│  ├─ data-lake (storage)             │
+│  └─ monitoring (prometheus/grafana) │
+├─────────────────────────────────────┤
+│  KEDA Scaler:                       │
+│  └─ Monitor Airflow task queue      │
+│  └─ Scale: 2-100 pods               │
+│  └─ Metric: Queue depth > 10 tasks  │
+└─────────────────────────────────────┘
+```
+
+### Prerequisites
+
+1. **Kubernetes Cluster Ready**
+```bash
+kubectl cluster-info
+kubectl get nodes
+```
+
+2. **Install KEDA**
+```bash
+# Add KEDA Helm repository
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+
+# Install KEDA in keda namespace
+helm install keda kedacore/keda --namespace keda --create-namespace
+
+# Verify installation
+kubectl get deployment -n keda
+```
+
+3. **Create Namespaces**
+```bash
+kubectl create namespace airflow
+kubectl create namespace rag-engine
+kubectl create namespace data-lake
+```
+
+### Deploy to Kubernetes
+
+#### 1. Deploy Data Lake Stack (Trino + Iceberg + MinIO + PostgreSQL)
+
+```yaml
+# data-lake-deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-lake
+---
+# PostgreSQL Metastore
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-metastore
+  namespace: data-lake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-metastore
+  template:
+    metadata:
+      labels:
+        app: postgres-metastore
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        env:
+        - name: POSTGRES_DB
+          value: metastore
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: password
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+# Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: data-lake
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Trino Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trino-coordinator
+  namespace: data-lake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trino
+  template:
+    metadata:
+      labels:
+        app: trino
+    spec:
+      containers:
+      - name: trino
+        image: trinodb/trino:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TRINO_DISCOVERY_URI
+          value: "http://trino-coordinator.data-lake.svc.cluster.local:8080"
+        volumeMounts:
+        - name: trino-config
+          mountPath: /etc/trino/catalog
+      volumes:
+      - name: trino-config
+        configMap:
+          name: trino-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trino-coordinator
+  namespace: data-lake
+spec:
+  selector:
+    app: trino
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: LoadBalancer
+```
+
+#### 2. Deploy Airflow with KEDA Scaler
+
+```yaml
+# airflow-deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: airflow
+---
+# Airflow Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-worker
+  namespace: airflow
+spec:
+  replicas: 2  # Initial replicas (KEDA will scale)
+  selector:
+    matchLabels:
+      app: airflow-worker
+  template:
+    metadata:
+      labels:
+        app: airflow-worker
+    spec:
+      containers:
+      - name: airflow-worker
+        image: apache/airflow:2.7.0
+        env:
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: "CeleryExecutor"
+        - name: AIRFLOW__CELERY__BROKER_URL
+          value: "postgresql://airflow:airflow@airflow-db.airflow.svc.cluster.local:5432/airflow"
+        - name: AIRFLOW__CELERY__RESULT_BACKEND
+          value: "postgresql://airflow:airflow@airflow-db.airflow.svc.cluster.local:5432/airflow"
+        volumeMounts:
+        - name: dags
+          mountPath: /opt/airflow/dags
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+      volumes:
+      - name: dags
+        configMap:
+          name: airflow-dags
+---
+# KEDA ScaledObject for Airflow
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: airflow-worker-scaler
+  namespace: airflow
+spec:
+  scaleTargetRef:
+    name: airflow-worker
+  minReplicaCount: 2
+  maxReplicaCount: 100
+  triggers:
+  - type: postgresql
+    metadata:
+      query: "SELECT COUNT(*) FROM task_instance WHERE state='queued'"
+      threshold: "10"
+      dbName: "airflow"
+      connection: "postgres://airflow:airflow@airflow-db.airflow.svc.cluster.local:5432/airflow"
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "80"
+  fallback:
+    failureThreshold: 3
+    replicas: 2
+  cooldownPeriod: 120
+```
+
+#### 3. Deploy RAG Query Engine
+
+```yaml
+# rag-engine-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-query-engine
+  namespace: rag-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-query-engine
+  template:
+    metadata:
+      labels:
+        app: rag-query-engine
+    spec:
+      containers:
+      - name: rag-backend
+        image: rag-query-engine:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: TRINO_HOST
+          value: "trino-coordinator.data-lake.svc.cluster.local"
+        - name: CHROMA_HOST
+          value: "chroma-service.rag-engine.svc.cluster.local"
+        - name: OLLAMA_BASE_URL
+          value: "http://ollama.rag-engine.svc.cluster.local:11434"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-query-engine
+  namespace: rag-engine
+spec:
+  selector:
+    app: rag-query-engine
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: LoadBalancer
+```
+
+### Deploy Using kubectl
+
+```bash
+# Create namespaces
+kubectl create namespace data-lake
+kubectl create namespace airflow
+kubectl create namespace rag-engine
+
+# Deploy data lake
+kubectl apply -f data-lake-deployment.yaml
+
+# Deploy Airflow with KEDA
+kubectl apply -f airflow-deployment.yaml
+
+# Deploy RAG engine
+kubectl apply -f rag-engine-deployment.yaml
+
+# Verify deployments
+kubectl get deployments -A
+kubectl get scaledobjects -A
+```
+
+### Monitor Scaling
+
+```bash
+# Watch pod scaling in real-time
+watch kubectl get pods -n airflow
+
+# Check KEDA metrics
+kubectl get hpa -n airflow
+
+# View KEDA logs
+kubectl logs -n keda deployment/keda-operator
+
+# Check Airflow queue depth
+kubectl exec -it deployment/airflow-scheduler -n airflow -- \
+  airflow tasks list-dag-runs -d rag_vector_db_ingestion_pipeline
+```
+
+---# RAG Query Engine Frontend
 open http://localhost:3000
 
 # RAG Backend API Docs
@@ -90,6 +443,273 @@ open http://localhost:8000/docs
 
 # MinIO Console
 open http://localhost:9001
+```
+
+---
+
+## Dynamic DAG Configuration
+
+### Overview
+
+Dynamic DAGs adapt task structure based on document type and batch size, enabling efficient processing of 1M+ documents with variable characteristics.
+
+### Configuration
+
+#### 1. Edit DAG Parameters
+
+File: [airflow-db/dags/rag_vector_db_ingestion_dag.py](airflow-db/dags/rag_vector_db_ingestion_dag.py)
+
+```python
+# Dynamic DAG configuration
+DAG_CONFIG = {
+    'document_types': ['pdf', 'docx', 'images', 'database'],
+    'chunk_size': 256,  # Documents per task
+    'embedding_batch_size': 16,
+    'max_parallel_tasks': 50,
+    'retry_policy': {
+        'retries': 3,
+        'retry_delay_minutes': 5,
+        'backoff_multiplier': 2
+    },
+    'schedule_interval': '@daily',
+    'max_active_runs': 5
+}
+```
+
+#### 2. Configure Document Type Handlers
+
+```python
+# handlers/document_type_handlers.py
+DOCUMENT_HANDLERS = {
+    'pdf': {
+        'extractor': PDFExtractor(),
+        'timeout_seconds': 120,
+        'max_concurrent': 10
+    },
+    'docx': {
+        'extractor': DocxExtractor(),
+        'timeout_seconds': 60,
+        'max_concurrent': 15
+    },
+    'images': {
+        'extractor': ImageExtractor(),
+        'timeout_seconds': 180,  # OCR takes longer
+        'max_concurrent': 5
+    },
+    'database': {
+        'extractor': DatabaseExtractor(),
+        'timeout_seconds': 300,
+        'max_concurrent': 3
+    }
+}
+```
+
+#### 3. Task Group Definition
+
+```python
+# Dynamic task generation pseudocode
+from airflow.models import DAG
+from airflow.utils.task_group import TaskGroup
+
+def generate_document_pipeline(dag, doc_batch):
+    """Generate dynamic tasks for document batch"""
+    
+    with TaskGroup(group_id="document_processing") as tg:
+        # Extract phase
+        extract_task = extract_metadata_from_iceberg()
+        
+        # Process phase - dynamic task groups per document type
+        process_groups = {}
+        for doc_type, docs in doc_batch.group_by_type():
+            process_groups[doc_type] = create_process_tasks(
+                doc_type=doc_type,
+                docs=docs,
+                chunk_size=256
+            )
+        
+        # Embed phase - parallel embedding tasks
+        embed_tasks = [
+            create_embedding_task(f"embed_{i}")
+            for i in range(len(doc_batch) // 16)
+        ]
+        
+        # Upsert and validate
+        upsert_task = upsert_to_chroma()
+        validate_task = validate_indexing()
+        
+        # Set dependencies
+        extract_task >> process_groups.values() >> embed_tasks >> upsert_task >> validate_task
+    
+    return tg
+```
+
+### Performance Tuning
+
+| Parameter | Development | Production (1M docs) | Tuning Strategy |
+|-----------|-------------|----------------------|------------------|
+| **chunk_size** | 10 | 256 | Balance: memory vs. throughput |
+| **embedding_batch_size** | 2 | 16 | Based on Ollama GPU memory |
+| **max_parallel_tasks** | 5 | 50 | Set to (worker_pods × 10) |
+| **task_pool_limit** | 10 | 500 | Prevent resource starvation |
+
+---
+
+## KEDA Installation & Configuration
+
+### Step 1: Install KEDA
+
+```bash
+# Add Helm repository
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+
+# Install KEDA operator
+helm install keda kedacore/keda --namespace keda --create-namespace
+
+# Verify installation
+kubectl get pods -n keda
+kubectl get crds | grep keda
+```
+
+### Step 2: Configure Airflow for KEDA
+
+#### Create Airflow Secret (for Postgres connection)
+
+```bash
+kubectl create secret generic airflow-postgres \
+  --from-literal=connection-string='postgresql://airflow:airflow@postgres:5432/airflow' \
+  -n airflow
+```
+
+#### Apply KEDA ScaledObject
+
+```yaml
+# keda-airflow-scaler.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: airflow-celery-worker-scaler
+  namespace: airflow
+spec:
+  scaleTargetRef:
+    name: airflow-celery-worker
+    kind: Deployment
+  
+  # Scaling limits
+  minReplicaCount: 2         # Keep minimum 2 pods during low traffic
+  maxReplicaCount: 100       # Scale up to 100 pods for 1M docs
+  
+  # Autoscaling triggers
+  triggers:
+  # Primary trigger: Airflow task queue depth
+  - type: postgresql
+    metadata:
+      query: |
+        SELECT COUNT(*) as queue_depth 
+        FROM task_instance 
+        WHERE dag_id = 'rag_vector_db_ingestion_pipeline'
+        AND state = 'queued'
+      threshold: "10"
+      dbName: "airflow"
+      connection: "airflow-postgres"
+    authModes:
+      - "bearer"
+  
+  # Secondary trigger: CPU utilization
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "80"
+  
+  # Scaling behavior
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+    
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      selectPolicy: Min
+  
+  # Fallback strategy
+  fallback:
+    failureThreshold: 3
+    replicas: 2
+  
+  cooldownPeriod: 300
+```
+
+### Step 3: Deploy KEDA Scaler
+
+```bash
+# Create scaler
+kubectl apply -f keda-airflow-scaler.yaml
+
+# Verify scaler creation
+kubectl get scaledobjects -n airflow
+kubectl describe scaledobject airflow-celery-worker-scaler -n airflow
+
+# Monitor scaling activity
+kubectl get hpa -n airflow -w
+```
+
+### Monitoring KEDA Scaling
+
+```bash
+# Watch real-time pod scaling
+watch kubectl get pods -n airflow -L keda.sh/scaler
+
+# Check KEDA operator logs
+kubectl logs -n keda deployment/keda-operator -f
+
+# Get scaler metrics
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/airflow/pods/*/queue_depth" | jq
+
+# Airflow task metrics
+kubectl exec -it deployment/airflow-scheduler -n airflow -- \
+  airflow tasks list-dag-runs -d rag_vector_db_ingestion_pipeline
+```
+
+### Expected Scaling Behavior
+
+```
+Time          Queue Depth    Pods    Reason
+------        -----------    ----    ---------
+T+0min        0              2       Baseline
+T+5min        5000           5       Slight increase
+T+10min       50000          30      Rapid scale-up
+T+15min       100000         80      Peak scaling
+T+20min       80000          65      Scale partial
+T+60min       10000          10      Return to baseline
+T+80min       0              2       Scale down complete
+```
+
+### Troubleshooting KEDA
+
+```bash
+# Check if scaler is active
+kubectl get hpa -n airflow
+
+# View KEDA metrics
+kubectl top pods -n airflow
+
+# Test trigger manually
+kubectl exec -it deployment/keda-operator -n keda -- \
+  kubectl get triggers
+
+# View recent scaling events
+kubectl get events -n airflow --sort-by='.lastTimestamp'
 ```
 
 ---

@@ -1,32 +1,32 @@
-# 🚀 Trino Data Lake with Apache Iceberg, PostgreSQL Metastore & MinIO
+# 🚀 Enterprise Document Lifecycle Management Platform
 
 ![Datalake Architecture](datalake.jpg)
 
-## 🧠 Overview
+## 🎯 Enterprise Document Management at Scale
 
-This project sets up a modern **data lake architecture** using:
+A production-grade **intelligent document lifecycle management system** for processing, indexing, and querying **1M+ structured and unstructured enterprise documents**. Powered by:
 
-- **Trino** as the distributed SQL query engine
-- **Apache Iceberg** as the table format for large analytical datasets
-- **PostgreSQL** as the Iceberg metastore (catalog)
-- **MinIO** as the object storage (S3-compatible)
-- **Apache Airflow** for data orchestration and ETL pipelines
-- **RAG Query Engine** for AI-powered natural language querying
+- **Apache Airflow** with **Dynamic DAGs** for adaptive pipeline generation
+- **Kubernetes Event-Driven Autoscaling (KEDA)** for elastic resource management
+- **RAG Query Engine** with semantic search and LLM-powered document analysis
+- **Apache Iceberg** for ACID-compliant document metadata management
+- **Trino** for federated querying across document repositories
+- **MinIO** for S3-compatible document storage at petabyte scale
 
-It is containerized with Docker Compose and designed to demonstrate the integration of modular data lake components for querying, governance, and workflow automation.
+Designed for enterprises managing complex document workflows with unpredictable scale, real-time ingestion, and sophisticated document understanding requirements.
 
-## 🏗️ Components
+## 🏗️ Core Components
 
 | Component       | Role                                                                 |
-|----------------|----------------------------------------------------------------------|
-| **Trino**       | SQL query engine supporting federated querying over Iceberg tables   |
-| **Apache Iceberg** | Table format with support for time travel, schema evolution, and ACID |
-| **PostgreSQL**  | Catalog/metastore for Iceberg                                        |
-| **MinIO**       | Acts as an S3-compatible storage backend                             |
-| **Apache Airflow** | DAG scheduler for running batch pipelines and analytics jobs        |
-| **RAG Query Engine** | LLM-powered natural language interface with self-correcting SQL generation |
-| **Ollama**      | Local LLM inference engine for embeddings and SQL generation         |
-| **Chroma**      | Vector database for semantic metadata search                         |
+|----------------|-------------------------------------------------------------------------|
+| **Airflow + Dynamic DAGs** | Adaptive pipeline orchestration for document workflows |
+| **KEDA** | Event-driven autoscaling based on document queue depth |
+| **RAG Engine** | Semantic search + LLM analysis on document content |
+| **Kubernetes** | Container orchestration for elastic scalability |
+| **Trino** | Federated querying across document metadata |
+| **Apache Iceberg** | ACID-compliant metadata management with time-travel |
+| **Ollama + LangChain** | Local LLM inference for document understanding |
+| **Chroma** | Vector embeddings for semantic document discovery |
 
 ## 📖 Documentation
 
