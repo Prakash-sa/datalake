@@ -2,6 +2,6 @@
 Application Layer - Use cases and orchestration
 """
 
-from .rag_service import DocumentRAGService
+from application.rag_service import DocumentRAGService
 
 __all__ = ["DocumentRAGService"]

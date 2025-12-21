@@ -5,8 +5,8 @@ API Layer - HTTP routes and controllers
 from fastapi import APIRouter, HTTPException, Query
 from typing import List
 
-from ..application.rag_service import DocumentRAGService
-from ..interfaces import (
+from application.rag_service import DocumentRAGService
+from interfaces import (
     DocumentIndexRequest,
     DocumentSearchRequest,
     DocumentQueryRequest,
@@ -37,7 +37,7 @@ async def get_stats():
     """Get engine statistics and metrics."""
     if not rag_service:
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-    
+
     stats = rag_service.get_stats()
     return StatsResponse(**stats)
 
@@ -47,7 +47,7 @@ async def index_documents(request: DocumentIndexRequest):
     """Index documents for semantic search."""
     if not rag_service:
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-    
+
     try:
         result = rag_service.index_documents(request.documents)
         return result
@@ -60,17 +60,12 @@ async def search_documents(request: DocumentSearchRequest):
     """Search for documents using semantic similarity."""
     if not rag_service:
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-    
+
     try:
         results = rag_service.search_documents(
-            query=request.query,
-            k=request.k,
-            min_score=request.min_score
+            query=request.query, k=request.k, min_score=request.min_score
         )
-        return {
-            "status": "success",
-            "results": results
-        }
+        return {"status": "success", "results": results}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -82,16 +77,13 @@ async def query_documents(request: DocumentQueryRequest):
     """Execute RAG pipeline: search documents and generate response."""
     if not rag_service:
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-    
+
     try:
-        result = rag_service.query_documents(
-            user_query=request.query,
-            k=request.k
-        )
-        
+        result = rag_service.query_documents(user_query=request.query, k=request.k)
+
         if result.get("status") == "error":
             raise HTTPException(status_code=500, detail=result.get("error"))
-        
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

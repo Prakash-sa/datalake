@@ -9,12 +9,14 @@ from datetime import datetime
 
 class HealthResponse(BaseModel):
     """Health check response."""
+
     status: str
     timestamp: str = datetime.now().isoformat()
 
 
 class StatsResponse(BaseModel):
     """Engine statistics response."""
+
     documents_indexed: int
     queries_processed: int
     errors: int
@@ -24,6 +26,7 @@ class StatsResponse(BaseModel):
 
 class DocumentResultItem(BaseModel):
     """Single document in search result."""
+
     id: str
     content: str
     relevance_score: float
@@ -32,6 +35,7 @@ class DocumentResultItem(BaseModel):
 
 class SearchResponse(BaseModel):
     """Search response."""
+
     status: str
     results: List[DocumentResultItem]
     timestamp: str = datetime.now().isoformat()
@@ -39,6 +43,7 @@ class SearchResponse(BaseModel):
 
 class QueryResponse(BaseModel):
     """RAG query response."""
+
     status: str
     query: str
     answer: str

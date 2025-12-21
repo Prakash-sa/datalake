@@ -10,10 +10,11 @@ from datetime import datetime
 @dataclass
 class Document:
     """Domain model for a document"""
+
     id: str
     content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def __post_init__(self):
         if not self.id:
             raise ValueError("Document ID cannot be empty")
@@ -24,11 +25,12 @@ class Document:
 @dataclass
 class SearchResult:
     """Domain model for search result"""
+
     document_id: str
     content: str
     relevance_score: float
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def __post_init__(self):
         if not 0.0 <= self.relevance_score <= 1.0:
             raise ValueError("Relevance score must be between 0.0 and 1.0")
@@ -37,6 +39,7 @@ class SearchResult:
 @dataclass
 class QueryResult:
     """Domain model for query result"""
+
     query: str
     search_results: List[SearchResult]
     llm_analysis: Optional[str] = None
@@ -48,6 +51,7 @@ class QueryResult:
 @dataclass
 class EngineStats:
     """Domain model for engine statistics"""
+
     documents_indexed: int = 0
     queries_processed: int = 0
     errors: int = 0

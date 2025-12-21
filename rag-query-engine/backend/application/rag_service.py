@@ -11,12 +11,12 @@ from functools import lru_cache
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
-from ..domain.models import Document, SearchResult, QueryResult, EngineStats
+from domain.models import Document, SearchResult, QueryResult, EngineStats
 
 # Configure logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class DocumentRAGService:
     Application service for RAG operations.
     Handles use cases: index, search, and query documents.
     """
-    
+
     MAX_DOCUMENTS = 10000
     MIN_SIMILARITY_SCORE = 0.0
     MAX_QUERY_LENGTH = 1000
@@ -42,7 +42,7 @@ class DocumentRAGService:
         """Initialize RAG service."""
         if not 0.0 <= temperature <= 1.0:
             raise ValueError("Temperature must be between 0.0 and 1.0")
-            
+
         self.ollama_url = ollama_url
         self.embedding_model = embedding_model
         self.llm_model = llm_model
@@ -62,19 +62,23 @@ class DocumentRAGService:
             logger.info(f"✅ Embedding model ({self.embedding_model}) initialized")
 
             self.llm = OllamaLLM(
-                model=self.llm_model, base_url=self.ollama_url, temperature=self.temperature
+                model=self.llm_model,
+                base_url=self.ollama_url,
+                temperature=self.temperature,
             )
             logger.info(f"✅ LLM ({self.llm_model}) initialized")
         except Exception as e:
             logger.error(f"❌ Failed to initialize RAG components: {e}", exc_info=True)
             self.stats["errors"] += 1
-            raise ConnectionError(f"Failed to connect to Ollama at {self.ollama_url}") from e
+            raise ConnectionError(
+                f"Failed to connect to Ollama at {self.ollama_url}"
+            ) from e
 
     def index_documents(self, documents: List[dict]) -> dict:
         """Index documents into the vector store."""
         if not documents:
             return {"status": "success", "documents_indexed": 0}
-            
+
         try:
             logger.info(f"📄 Indexing {len(documents)} documents...")
             indexed_count = 0
@@ -84,7 +88,7 @@ class DocumentRAGService:
                 try:
                     doc_id = doc.get("id", "")
                     content = doc.get("content", "")
-                    
+
                     if not doc_id or not content:
                         errors.append(f"Document {idx}: missing 'id' or 'content'")
                         continue
@@ -96,7 +100,7 @@ class DocumentRAGService:
                         "metadata": doc.get("metadata", {}),
                     }
                     indexed_count += 1
-                    
+
                 except Exception as e:
                     errors.append(f"Document {idx}: {str(e)}")
                     logger.warning(f"Failed to index document {idx}: {e}")
@@ -112,19 +116,21 @@ class DocumentRAGService:
             self.stats["errors"] += 1
             return {"status": "error", "error": str(e)}
 
-    def search_documents(self, query: str, k: int = 5, min_score: float = None) -> List[dict]:
+    def search_documents(
+        self, query: str, k: int = 5, min_score: float = None
+    ) -> List[dict]:
         """Search for relevant documents using semantic similarity."""
         try:
             if not query or len(query) > self.MAX_QUERY_LENGTH:
                 raise ValueError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
             if not 1 <= k <= 100:
                 raise ValueError("k must be between 1 and 100")
-            
+
             if min_score is None:
                 min_score = self.MIN_SIMILARITY_SCORE
             if not 0.0 <= min_score <= 1.0:
                 raise ValueError("min_score must be between 0.0 and 1.0")
-                
+
             logger.info(f"🔍 Searching for: {query}")
 
             if not self.documents_store:
@@ -139,7 +145,9 @@ class DocumentRAGService:
                 norm_q = sum(x**2 for x in query_embedding) ** 0.5
                 norm_d = sum(x**2 for x in doc_embedding) ** 0.5
                 similarity = (
-                    dot_product / (norm_q * norm_d) if norm_q > 0 and norm_d > 0 else 0.0
+                    dot_product / (norm_q * norm_d)
+                    if norm_q > 0 and norm_d > 0
+                    else 0.0
                 )
                 if similarity >= min_score:
                     similarities.append((doc_id, similarity))
@@ -149,12 +157,14 @@ class DocumentRAGService:
 
             for doc_id, score in top_results:
                 doc_data = self.documents_store[doc_id]
-                documents.append({
-                    "id": doc_id,
-                    "content": doc_data["content"][:500],
-                    "metadata": doc_data["metadata"],
-                    "relevance_score": round(float(score), 3),
-                })
+                documents.append(
+                    {
+                        "id": doc_id,
+                        "content": doc_data["content"][:500],
+                        "metadata": doc_data["metadata"],
+                        "relevance_score": round(float(score), 3),
+                    }
+                )
 
             return documents
         except ValueError as e:
@@ -169,7 +179,7 @@ class DocumentRAGService:
         try:
             if not user_query or len(user_query) > self.MAX_QUERY_LENGTH:
                 raise ValueError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
-                
+
             logger.info(f"📝 Processing query: {user_query[:100]}...")
             start_time = datetime.now()
 
@@ -217,7 +227,9 @@ Answer:"""
             return {
                 "status": "success",
                 "query": user_query,
-                "answer": response_text.strip() if response_text else "No answer generated",
+                "answer": (
+                    response_text.strip() if response_text else "No answer generated"
+                ),
                 "retrieved_documents": relevant_docs,
                 "document_count": len(relevant_docs),
                 "processing_time_seconds": round(processing_time, 2),
@@ -234,7 +246,7 @@ Answer:"""
                 "query": user_query,
                 "error": str(e),
             }
-    
+
     def get_stats(self) -> dict:
         """Get engine statistics."""
         return {

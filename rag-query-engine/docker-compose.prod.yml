@@ -56,7 +56,7 @@ services:
     container_name: rag-backend-prod
     ports:
       - "8000:8000"
-      - "9090:9090"  # Metrics port
+      - "9090:9090" # Metrics port
     environment:
       ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -112,8 +112,8 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
     networks:
       - rag-network
     restart: unless-stopped

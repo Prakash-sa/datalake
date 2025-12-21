@@ -2,12 +2,12 @@
 API Layer - HTTP interfaces and request/response models
 """
 
-from .request_models import (
+from interfaces.request_models import (
     DocumentIndexRequest,
     DocumentSearchRequest,
     DocumentQueryRequest,
 )
-from .response_models import (
+from interfaces.response_models import (
     HealthResponse,
     StatsResponse,
     SearchResponse,
