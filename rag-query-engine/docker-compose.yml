@@ -49,6 +49,8 @@ services:
       MINIO_HOST: minio:9000
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      LLM_MODEL: mistral
+      EMBEDDING_MODEL: nomic-embed-text
     depends_on:
       - ollama
       - minio
