@@ -1,6 +1,6 @@
-# Complete System Architecture: Enterprise Document Lifecycle Management
+# Complete System Architecture: Enterprise Document RAG Platform
 
-> **Comprehensive technical documentation of the intelligent document platform, including Dynamic DAGs, KEDA autoscaling, and enterprise-scale document processing.**
+> **Comprehensive technical documentation of the intelligent document RAG platform, including Dynamic DAGs, KEDA autoscaling, semantic search, and LLM-powered analysis at enterprise scale.**
 
 ---
 
@@ -8,11 +8,11 @@
 
 1. [System Overview](#system-overview)
 2. [Architecture Diagrams](#architecture-diagrams)
-3. [Dynamic DAGs Architecture](#dynamic-dags-architecture)
-4. [KEDA Autoscaling](#keda-autoscaling)
-5. [Component Details](#component-details)
-6. [RAG Engine Architecture](#rag-engine-architecture)
-7. [Document Processing Pipeline](#document-processing-pipeline)
+3. [RAG Engine Architecture](#rag-engine-architecture)
+4. [Document Processing Pipeline](#document-processing-pipeline)
+5. [Dynamic DAGs Architecture](#dynamic-dags-architecture)
+6. [KEDA Autoscaling](#keda-autoscaling)
+7. [Component Details](#component-details)
 8. [API Documentation](#api-documentation)
 9. [Data Flow](#data-flow)
 10. [Technology Stack](#technology-stack)
@@ -23,14 +23,15 @@
 
 ### Problem Statement
 
-**Before**: Manual processes for managing 1M+ enterprise documents. No intelligent discovery, analysis, or automated categorization. Scaling required manual infrastructure provisioning.
+**Before**: Manual processes for searching and analyzing 1M+ enterprise documents. No intelligent discovery, semantic search, or AI-powered insights. Scaling required manual infrastructure provisioning.
 
-**After**: Intelligent document lifecycle platform with:
-- Automated semantic analysis and discovery
+**After**: Intelligent document RAG platform with:
+- Semantic search across all documents (structured + unstructured)
+- LLM-powered document analysis and insights
 - Event-driven elastic scaling (KEDA)
 - Adaptive pipeline generation (Dynamic DAGs)
-- Sub-second query latency at 1M+ document scale
-- Multi-format support (PDF, Word, images, databases)
+- Sub-second semantic search at 1M+ document scale
+- Multi-format support (PDF, Word, text, JSON, databases)
 
 ### Solution Architecture
 
@@ -39,7 +40,7 @@ The system combines five core components:
 1. **Orchestration Layer** (Apache Airflow + Dynamic DAGs)
    - Adaptive pipeline generation based on document type/source
    - Dynamic task scaling with document batch size
-   - 6-task production pipeline: extract → process → embed → upsert → validate → archive
+   - 6-task production pipeline: fetch → process → embed → upsert → validate → notify
    - Self-healing workflows with retry logic
 
 2. **Autoscaling Layer** (Kubernetes + KEDA)
@@ -48,36 +49,32 @@ The system combines five core components:
    - CPU/queue-depth hybrid scaler configuration
    - Predictive scaling for anticipated document surges
 
-3. **Data Lake** (Trino, Iceberg, MinIO, PostgreSQL)
-   - Distributed SQL querying across document metadata
-   - ACID-compliant metadata management with time-travel
-   - S3-compatible object storage (petabyte scale)
-   - Centralized Iceberg catalog
+3. **Embedding & Vector Database** (Ollama, Chroma)
+   - Local LLM inference for embeddings (privacy-first, no data egress)
+   - 768-dimensional vector embeddings (nomic-embed-text model)
+   - Semantic similarity search with cosine distance
+   - Persistent vector storage for 1M+ documents
+   - Efficient HNSW indexing
 
-4. **AI/ML Layer** (Ollama, Chroma, LangChain)
-   - Local LLM inference (privacy-first, no data egress)
-   - 768-dimensional vector embeddings
-   - Semantic search and similarity matching
-   - Self-correcting query generation with 85% 2nd-attempt success rate
+4. **LLM Layer** (Ollama)
+   - Local LLM inference (Mistral, Llama2 - configurable)
+   - Privacy-first document analysis (no cloud API calls)
+   - Self-correcting query generation
+   - Document context summarization
 
-5. **User Interface** (React, FastAPI)
-   - REST API for document queries
-   - Real-time query results
+5. **Storage & Retrieval** (MinIO, Chroma)
+   - S3-compatible document object storage (petabyte scale)
+   - Persistent vector database (Chroma)
+   - Document metadata indexing
+   - Transactional consistency
+
+6. **User Interface** (React, FastAPI)
+   - REST API for natural language document queries
+   - Semantic document search
+   - Real-time LLM analysis results
    - Document metadata browsing
    - Web-based query interface
-   - Real-time execution
-   - Result visualization
-   - Error handling
-
----
-
-## Dynamic DAGs Architecture
-
-### Overview
-
-Dynamic DAGs enable **adaptive pipeline generation** where task count and structure automatically adjust based on:
-- Document type/format (PDF vs. Word vs. images vs. databases)
-- Batch size and ingestion rate
+   - Result visualization with relevance scores
 - Configured processing rules
 - Resource availability
 
