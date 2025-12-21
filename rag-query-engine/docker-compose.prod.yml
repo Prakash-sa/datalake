@@ -1,0 +1,154 @@
+version: "3.8"
+
+services:
+  # Ollama for local LLM inference (production)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-prod
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-8}
+      OLLAMA_NUM_GPU: ${OLLAMA_NUM_GPU:-1}
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./models:/models
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MinIO for document storage (production)
+  minio:
+    image: minio/minio:latest
+    container_name: minio-prod
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_REGION_NAME: ${MINIO_REGION:-us-east-1}
+    volumes:
+      - minio_data:/minio_data
+    networks:
+      - rag-network
+    command: minio server /minio_data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 40s
+
+  # RAG Backend (Production - Python/FastAPI with multiple workers)
+  rag-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: rag-backend-prod
+    ports:
+      - "8000:8000"
+      - "9090:9090"  # Metrics port
+    environment:
+      ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      HOST: 0.0.0.0
+      PORT: 8000
+      WORKERS: ${WORKERS:-4}
+      CHROMA_PATH: /data/chroma_db
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-8}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      LLM_MODEL: ${LLM_MODEL:-mistral}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
+      MINIO_HOST: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ENABLE_METRICS: "true"
+      METRICS_PORT: 9090
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+    networks:
+      - rag-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: ${CPU_LIMIT:-'2'}
+          memory: ${MEMORY_LIMIT:-4G}
+        reservations:
+          cpus: ${CPU_RESERVE:-'1'}
+          memory: ${MEMORY_RESERVE:-2G}
+
+  # Optional: Prometheus for metrics (if enabled)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - rag-network
+    restart: unless-stopped
+    profiles:
+      - metrics
+
+  # Optional: Grafana for dashboards (if enabled)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - rag-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - metrics
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local
+  minio_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
