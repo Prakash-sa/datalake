@@ -7,7 +7,9 @@ import logging
 from typing import List, Optional, Dict
 from datetime import datetime
 from functools import lru_cache
+from pathlib import Path
 
+import chromadb
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -38,8 +40,9 @@ class DocumentRAGService:
         embedding_model: str = "nomic-embed-text",
         llm_model: str = "mistral",
         temperature: float = 0.3,
+        chroma_path: str = "./chroma_db",
     ):
-        """Initialize RAG service."""
+        """Initialize RAG service with Chroma vector database."""
         if not 0.0 <= temperature <= 1.0:
             raise ValueError("Temperature must be between 0.0 and 1.0")
 
@@ -47,14 +50,17 @@ class DocumentRAGService:
         self.embedding_model = embedding_model
         self.llm_model = llm_model
         self.temperature = temperature
+        self.chroma_path = chroma_path
         self.embeddings = None
         self.llm = None
+        self.chroma_client = None
+        self.chroma_collection = None
         self.documents_store: Dict[str, Dict] = {}
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
         self._initialize_components()
 
     def _initialize_components(self) -> None:
-        """Initialize RAG components."""
+        """Initialize RAG components including Chroma vector DB."""
         try:
             self.embeddings = OllamaEmbeddings(
                 model=self.embedding_model, base_url=self.ollama_url
@@ -67,11 +73,24 @@ class DocumentRAGService:
                 temperature=self.temperature,
             )
             logger.info(f"✅ LLM ({self.llm_model}) initialized")
+            
+            # Initialize Chroma client
+            Path(self.chroma_path).mkdir(parents=True, exist_ok=True)
+            self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
+            logger.info(f"✅ Chroma client initialized at {self.chroma_path}")
+            
+            # Get or create documents collection
+            self.chroma_collection = self.chroma_client.get_or_create_collection(
+                name="documents",
+                metadata={"hnsw:space": "cosine"}
+            )
+            logger.info("✅ Chroma 'documents' collection ready")
+            
         except Exception as e:
             logger.error(f"❌ Failed to initialize RAG components: {e}", exc_info=True)
             self.stats["errors"] += 1
             raise ConnectionError(
-                f"Failed to connect to Ollama at {self.ollama_url}"
+                f"Failed to initialize RAG components: {e}"
             ) from e
 
     def index_documents(self, documents: List[dict]) -> dict:
@@ -119,7 +138,7 @@ class DocumentRAGService:
     def search_documents(
         self, query: str, k: int = 5, min_score: float = None
     ) -> List[dict]:
-        """Search for relevant documents using semantic similarity."""
+        """Search for relevant documents in Chroma vector database."""
         try:
             if not query or len(query) > self.MAX_QUERY_LENGTH:
                 raise ValueError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
@@ -131,40 +150,39 @@ class DocumentRAGService:
             if not 0.0 <= min_score <= 1.0:
                 raise ValueError("min_score must be between 0.0 and 1.0")
 
-            logger.info(f"🔍 Searching for: {query}")
+            logger.info(f"🔍 Searching Chroma for: {query}")
 
-            if not self.documents_store:
+            if not self.chroma_collection:
+                logger.warning("❌ Chroma collection not initialized")
+                return []
+            
+            # Check collection count
+            collection_count = self.chroma_collection.count()
+            logger.info(f"📊 Chroma collection has {collection_count} documents")
+            
+            if collection_count == 0:
+                logger.debug("No documents in Chroma collection")
                 return []
 
-            query_embedding = self.embeddings.embed_query(query)
-            similarities = []
-
-            for doc_id, doc_data in self.documents_store.items():
-                doc_embedding = doc_data["embedding"]
-                dot_product = sum(a * b for a, b in zip(query_embedding, doc_embedding))
-                norm_q = sum(x**2 for x in query_embedding) ** 0.5
-                norm_d = sum(x**2 for x in doc_embedding) ** 0.5
-                similarity = (
-                    dot_product / (norm_q * norm_d)
-                    if norm_q > 0 and norm_d > 0
-                    else 0.0
-                )
-                if similarity >= min_score:
-                    similarities.append((doc_id, similarity))
-
-            top_results = sorted(similarities, key=lambda x: x[1], reverse=True)[:k]
+            # Query Chroma
+            results = self.chroma_collection.query(
+                query_texts=[query],
+                n_results=k,
+                include=["documents", "metadatas", "distances"]
+            )
+            
             documents = []
-
-            for doc_id, score in top_results:
-                doc_data = self.documents_store[doc_id]
-                documents.append(
-                    {
-                        "id": doc_id,
-                        "content": doc_data["content"][:500],
-                        "metadata": doc_data["metadata"],
-                        "relevance_score": round(float(score), 3),
-                    }
-                )
+            for doc_text, metadata, distance in zip(
+                results["documents"][0], results["metadatas"][0], results["distances"][0]
+            ):
+                similarity = 1 - distance  # Convert distance to similarity
+                if similarity >= min_score:
+                    documents.append({
+                        "id": metadata.get("id", "doc"),
+                        "content": doc_text[:500],
+                        "metadata": metadata,
+                        "relevance_score": round(float(similarity), 3),
+                    })
 
             return documents
         except ValueError as e:

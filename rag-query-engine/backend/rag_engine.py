@@ -11,7 +11,9 @@ from typing import List, Optional, Dict, Tuple
 from datetime import datetime
 import logging
 from functools import lru_cache
+from pathlib import Path
 
+import chromadb
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -54,7 +56,7 @@ class DocumentRAGEngine:
         Initialize the document RAG engine.
 
         Args:
-            chroma_path: Path to Chroma vector database (for future use)
+            chroma_path: Path to Chroma vector database (persistent local storage)
             ollama_url: URL to Ollama LLM service
             embedding_model: Embedding model name (default: nomic-embed-text)
             llm_model: LLM model name (default: mistral)
@@ -74,12 +76,14 @@ class DocumentRAGEngine:
         self.temperature = temperature
         self.embeddings = None
         self.llm = None
+        self.chroma_client = None
+        self.chroma_collection = None
         self.documents_store: Dict[str, Dict] = {}
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
         self._initialize_components()
 
     def _initialize_components(self) -> None:
-        """Initialize RAG components: embeddings, LLM.
+        """Initialize RAG components: embeddings, LLM, and Chroma client.
 
         Raises:
             ConnectionError: If components fail to initialize
@@ -100,11 +104,24 @@ class DocumentRAGEngine:
             logger.info(
                 f"✅ LLM ({self.llm_model}) initialized with temperature={self.temperature}"
             )
+            
+            # Initialize Chroma client for persistent vector storage
+            Path(self.chroma_path).mkdir(parents=True, exist_ok=True)
+            self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
+            logger.info(f"✅ Chroma client initialized at {self.chroma_path}")
+            
+            # Get or create the documents collection
+            self.chroma_collection = self.chroma_client.get_or_create_collection(
+                name="documents",
+                metadata={"hnsw:space": "cosine"}
+            )
+            logger.info("✅ Chroma 'documents' collection ready")
+            
         except Exception as e:
             logger.error(f"❌ Failed to initialize RAG components: {e}", exc_info=True)
             self.stats["errors"] += 1
             raise ConnectionError(
-                f"Failed to connect to Ollama at {self.ollama_url}"
+                f"Failed to initialize RAG components: {e}"
             ) from e
 
     def index_documents(self, documents: List[dict]) -> dict:
@@ -192,7 +209,7 @@ class DocumentRAGEngine:
         self, query: str, k: int = 5, min_score: float = None
     ) -> List[dict]:
         """
-        Search for relevant documents using semantic similarity with validation.
+        Search for relevant documents using semantic similarity in Chroma vector DB.
 
         Args:
             query: Search query (max 1000 chars)
@@ -216,28 +233,58 @@ class DocumentRAGEngine:
             if not 0.0 <= min_score <= 1.0:
                 raise ValueError("min_score must be between 0.0 and 1.0")
 
-            logger.info(f"🔍 Searching for: {query} (top-{k})")
+            logger.info(f"🔍 Searching Chroma for: {query} (top-{k})")
 
-            if not self.documents_store:
-                logger.debug("No documents in store")
+            # Query Chroma collection
+            if not self.chroma_collection:
+                logger.warning("❌ Chroma collection not initialized")
+                return []
+            
+            # Get collection count to check if it has documents
+            collection_count = self.chroma_collection.count()
+            logger.info(f"📊 Chroma collection has {collection_count} documents")
+            
+            if collection_count == 0:
+                logger.debug("No documents in Chroma collection")
                 return []
 
-            # Generate query embedding
-            query_embedding = self.embeddings.embed_query(query)
-
-            # Calculate similarity scores using cosine similarity
-            similarities = []
-            for doc_id, doc_data in self.documents_store.items():
-                doc_embedding = doc_data["embedding"]
-                # Cosine similarity calculation
-                dot_product = sum(a * b for a, b in zip(query_embedding, doc_embedding))
-                norm_q = sum(x**2 for x in query_embedding) ** 0.5
-                norm_d = sum(x**2 for x in doc_embedding) ** 0.5
-                similarity = (
-                    dot_product / (norm_q * norm_d)
-                    if norm_q > 0 and norm_d > 0
-                    else 0.0
-                )
+            # Query the collection
+            results = self.chroma_collection.query(
+                query_texts=[query],
+                n_results=k,
+                where=None,  # No filtering
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            logger.info(f"✅ Found {len(results['documents'][0])} results in Chroma")
+            
+            # Format results
+            formatted_results = []
+            for idx, (doc_text, metadata, distance) in enumerate(
+                zip(results["documents"][0], results["metadatas"][0], results["distances"][0])
+            ):
+                # Convert distance to similarity (Chroma uses distance, we want similarity)
+                similarity = 1 - distance  # For cosine distance
+                
+                if similarity >= min_score:
+                    formatted_results.append({
+                        "id": metadata.get("id", f"doc_{idx}"),
+                        "content": doc_text,
+                        "metadata": metadata,
+                        "similarity_score": float(similarity),
+                        "rank": len(formatted_results) + 1
+                    })
+            
+            logger.info(f"✅ Returning {len(formatted_results)} relevant documents")
+            return formatted_results
+            
+        except ValueError as e:
+            logger.warning(f"⚠️ Validation error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Search failed: {e}", exc_info=True)
+            self.stats["errors"] += 1
+            return []
                 if similarity >= min_score:
                     similarities.append((doc_id, similarity))
 
