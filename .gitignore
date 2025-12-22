@@ -111,6 +111,7 @@ airflow-db/airflow.db
 *.bak
 *.backup
 .tmp/
+volumes/
 
 # Project specific
 *.pem
