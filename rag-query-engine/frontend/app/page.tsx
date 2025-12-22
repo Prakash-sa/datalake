@@ -17,7 +17,8 @@ export default function DocumentRAGInterface() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/query', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query, k: 5 }),

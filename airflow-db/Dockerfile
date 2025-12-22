@@ -17,6 +17,8 @@ RUN pip install dbt-postgres==1.8.2 \
 	&& pip install minio \
 	&& pip install langchain \
 	&& pip install langchain-community \
+	&& pip install langchain-ollama \
+	&& pip install langchain-text-splitters \
 	&& pip install chromadb
 
 

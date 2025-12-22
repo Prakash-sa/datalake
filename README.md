@@ -2,30 +2,113 @@
 
 ## 🎯 Semantic Search & LLM Analysis at Scale
 
-A production-grade **Retrieval Augmented Generation (RAG) system** for intelligent document discovery and analysis across large enterprise document collections. Built with:
+A production-grade **Retrieval Augmented Generation (RAG) system** for intelligent document discovery and analysis across large enterprise document collections. 
 
-- **Apache Airflow** - Workflow orchestration and document ingestion
-- **FastAPI** - High-performance REST API for document search
-- **Next.js** - Modern React frontend for document exploration
-- **Chroma** - Vector database for semantic embeddings
-- **Ollama** - Local LLM inference (no external APIs)
-- **MinIO** - S3-compatible object storage
-- **PostgreSQL** - Metadata and state management
-- **Redis** - Caching and message broker
+### Key Features
+- **🔍 Semantic Search** - Find documents by meaning, not just keywords
+- **🤖 LLM-Powered Answers** - Generate context-aware responses from documents
+- **⚡ Real-time Ingestion** - Automated document processing via Airflow DAGs
+- **🔒 Enterprise-Ready** - No external APIs, all local inference
+- **📊 Vector Database** - Efficient similarity search at scale
+- **🎨 Modern UI** - Intuitive Next.js frontend for document exploration
 
-Designed for enterprises needing semantic search, LLM-powered analysis, and real-time document ingestion on massive collections.
+### Technology Stack
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| **Orchestration** | Apache Airflow | Document ingestion pipeline scheduling |
+| **API** | FastAPI | High-performance REST API for search & analysis |
+| **Frontend** | Next.js 14 | Modern React UI with Tailwind CSS |
+| **Vector DB** | Chroma | Persistent storage for embeddings (384/768-dim) |
+| **LLM** | Ollama | Local inference with orca-mini & nomic-embed-text |
+| **Storage** | MinIO | S3-compatible object storage for documents |
+| **Database** | PostgreSQL | Metadata, state, and Airflow scheduling |
+| **Message Broker** | Redis | Celery task queue and caching |
+| **Execution** | Celery | Distributed task execution for DAGs |
 
-## 🏗️ Architecture
+## 🏗️ System Architecture
 
+### Data Flow Diagram
 ```
-Frontend (Next.js) → API (FastAPI) → RAG Engine
-                        ↓
-                    Vector DB (Chroma)
-                        ↓
-                    LLM Inference (Ollama)
-                        
-Document Ingestion via Airflow DAGs → MinIO Storage
+┌─────────────────────────────────────────────────────────────┐
+│                     USER INTERFACE                          │
+│  Next.js Frontend (http://localhost:3000)                   │
+└─────────────┬───────────────────────────────────────────────┘
+              │ HTTP/JSON
+              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   QUERY PROCESSING                          │
+│  FastAPI Backend (http://localhost:8000)                    │
+│  - /documents/search          (semantic search)             │
+│  - /documents/ask             (LLM with context)            │
+│  - /documents/health          (health check)                │
+└──────────┬────────────────────────────┬────────────────────┘
+           │                            │
+           ↓                            ↓
+    ┌─────────────┐          ┌──────────────────┐
+    │   Chroma    │          │   Ollama LLM     │
+    │   Vector DB │          │   Inference      │
+    │ (Embeddings)│          │ (orca-mini)      │
+    └─────────────┘          └──────────────────┘
+           ↑
+           │ Embedding generation
+           │ (nomic-embed-text)
+           │
+┌──────────┴────────────────────────────────────────┐
+│         DOCUMENT INGESTION PIPELINE               │
+│     Apache Airflow DAG (Port 9093)                │
+│                                                    │
+│  1. Fetch Documents    (from MinIO)               │
+│  2. Process Documents  (chunk & split)            │
+│  3. Create Embeddings  (via Ollama)               │
+│  4. Upsert to Chroma   (vector storage)           │
+│  5. Validate Results   (verify indexing)          │
+│  6. Notify Completion  (log summary)              │
+└──────────┬────────────────────────────────────────┘
+           │
+           ↓
+    ┌─────────────────┐
+    │     MinIO       │
+    │ S3-Compatible   │
+    │    Storage      │
+    │ (Port 9000)     │
+    └─────────────────┘
+
+Infrastructure:
+- PostgreSQL (Port 5432)    - Airflow metadata & state
+- Redis (Port 6379)         - Celery broker & cache
+- Chroma (Port 8000)        - Vector database
 ```
+
+### Component Details
+
+**Frontend (Next.js)**
+- User interface for document search and Q&A
+- Real-time response streaming
+- Environment: `NEXT_PUBLIC_API_URL=http://localhost:8000`
+
+**API Server (FastAPI)**
+- REST endpoints for semantic search and LLM queries
+- CORS enabled for localhost:3000
+- Graceful degradation when LLM unavailable
+- Returns search results with formatted context
+
+**Vector Database (Chroma)**
+- Persistent storage: `/opt/airflow/chroma_db`
+- Collection: "documents" (768-dimensional embeddings)
+- Search method: cosine similarity
+- Automatic compression and indexing
+
+**Orchestration (Airflow)**
+- Scheduler: Processes DAGs and schedules tasks
+- Worker: Executes tasks via Celery
+- Executor: Celery with Redis broker
+- DAG: `document_rag_ingestion_pipeline` (daily schedule)
+
+**Storage (MinIO)**
+- S3-compatible API at `http://minio:9000`
+- Console: `http://localhost:9001`
+- Bucket: "documents"
+- Used for staging uploaded documents
 
 ## 📚 Documentation
 
@@ -33,125 +116,334 @@ Complete documentation is organized in the `docs/` folder:
 
 | Document | Purpose |
 |----------|---------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, components, data flow, tech stack |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Dev/staging/production setup, Kubernetes, troubleshooting |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | REST API endpoints, request/response examples, auth |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues, solutions, debugging tips |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed system design, components, data flow |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Setup for dev/staging/production, Kubernetes, troubleshooting |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | REST API endpoints, request/response examples |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues, solutions, debugging guide |
+| [docs/SYSTEM_DESIGN_INTERVIEW.md](docs/SYSTEM_DESIGN_INTERVIEW.md) | System design interview Q&A with diagrams |
+
+### Port Reference
+| Service | Port | URL |
+|---------|------|-----|
+| Frontend | 3000 | http://localhost:3000 |
+| API | 8000 | http://localhost:8000 |
+| Airflow Web | 9093 | http://localhost:9093 |
+| MinIO Console | 9001 | http://localhost:9001 |
+| Chroma | 8000 | http://localhost:8000 |
+| Ollama | 11434 | http://localhost:11434 |
+| PostgreSQL | 5432 | localhost:5432 |
+| Redis | 6379 | localhost:6379 |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose
-- 4GB RAM minimum
+- Docker & Docker Compose installed
+- 4GB RAM minimum (8GB recommended for full Ollama)
 - macOS/Linux/Windows with WSL2
 
-### Start Services
-
+### 1. Start Services
 ```bash
-# Clone and navigate
-git clone <repo>
 cd datalake-project
+docker-compose up -d
 
-# Copy environment file
-cp .env.example .env
-
-# Start all services
-./scripts/start.sh
-
-# Services will be available at:
-# Frontend: http://localhost:3000
-# API: http://localhost:8000
-# Airflow: http://localhost:9093
-# MinIO Console: http://localhost:9001
-# Chroma: http://localhost:8001
+# Verify services are running
+docker ps | grep -E "rag-|airflow-|ollama"
 ```
 
-### First Time Setup
+### 2. Verify Health
+```bash
+# Check API health
+curl http://localhost:8000/health
 
-1. **Upload Sample Documents** to MinIO (http://localhost:9001)
-2. **Trigger Airflow DAG** - Navigate to http://localhost:9093
-3. **Test Search** - Go to http://localhost:3000 and search
+# Check Ollama models
+curl http://localhost:11434/api/tags
 
-For detailed setup, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+# Access UI at http://localhost:3000
+```
+
+### 3. Ingest Sample Documents
+```bash
+# Upload documents via MinIO console
+# http://localhost:9001 (minioadmin/minioadmin)
+# Create bucket: documents
+# Upload sample .txt files
+```
+
+### 4. Trigger Airflow Pipeline
+```bash
+# Access Airflow at http://localhost:9093
+# DAG: document_rag_ingestion_pipeline
+# Click: "Trigger DAG" button
+# Monitor: All 6 tasks should succeed
+```
+
+### 5. Search Documents
+```bash
+# Frontend UI
+# http://localhost:3000
+
+# Or use API directly
+curl -X POST http://localhost:8000/documents/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"your search query"}'
+```
+
+### Stop Services
+```bash
+docker-compose down
+
+# Remove volumes (optional - deletes data)
+docker-compose down -v
+```
 
 ## 📂 Project Structure
 
 ```
 datalake-project/
-├── docs/                            # Comprehensive documentation
-│   ├── ARCHITECTURE.md              # System design & components
-│   ├── DEPLOYMENT.md                # Setup for all environments
-│   ├── API_REFERENCE.md             # REST API endpoints
-│   └── TROUBLESHOOTING.md           # Common issues & solutions
+├── docs/
+│   ├── ARCHITECTURE.md              # Detailed system design
+│   ├── DEPLOYMENT.md                # Setup & configuration
+│   ├── API_REFERENCE.md             # API endpoints & examples
+│   ├── TROUBLESHOOTING.md           # Common issues & fixes
+│   └── SYSTEM_DESIGN_INTERVIEW.md   # Interview Q&A
 │
-├── src/                             # Source code
-│   ├── orchestration/               # Apache Airflow DAGs
-│   │   ├── dags/                    # DAG definitions
-│   │   └── config/                  # Airflow configuration
-│   └── services/                    # Microservices
-│       ├── rag-engine/              # FastAPI backend
-│       └── frontend/                # Next.js React UI
+├── airflow-db/                      # Airflow orchestration
+│   ├── dags/
+│   │   └── rag_vector_db_ingestion_dag.py  # Document pipeline (6 tasks)
+│   ├── config/
+│   │   └── airflow.cfg
+│   └── docker-compose.yml
 │
-├── scripts/                         # Helper scripts
-│   ├── start.sh                     # Start all services
-│   ├── stop.sh                      # Stop services
-│   ├── health-check.sh              # Health verification
-│   └── setup.sh                     # Initial setup
+├── rag-query-engine/                # RAG backend & frontend
+│   ├── backend/                     # FastAPI application
+│   │   ├── main.py                  # Entry point
+│   │   ├── rag_engine.py            # Core RAG logic
+│   │   ├── requirements.txt         # Dependencies
+│   │   ├── application/
+│   │   │   └── rag_service.py       # Search & LLM service
+│   │   ├── domain/
+│   │   │   └── models.py            # Data models
+│   │   ├── infrastructure/
+│   │   │   └── config_manager.py    # Configuration
+│   │   └── interfaces/
+│   │       ├── request_models.py    # API request schemas
+│   │       └── response_models.py   # API response schemas
+│   │
+│   ├── frontend/                    # Next.js React UI
+│   │   ├── app/
+│   │   │   ├── page.tsx             # Main page component
+│   │   │   ├── layout.tsx           # Layout wrapper
+│   │   │   └── globals.css          # Styles
+│   │   ├── package.json
+│   │   ├── tailwind.config.ts
+│   │   └── Dockerfile
+│   │
+│   ├── chroma_db/                   # Vector database storage
+│   ├── docker-compose.yml           # Backend services
+│   └── docker-compose.prod.yml      # Production config
 │
-├── docker-compose.yml               # Multi-container setup
-├── .env.example                     # Environment template
+├── backend/                         # Additional docs
+│   ├── README.md
+│   └── TESTING.md
+│
+├── docker-compose.yml               # Main orchestration
+├── .env.example                     # Environment variables
 └── README.md                        # This file
 ```
 
 ## 🎯 Core Features
 
-| Feature | Details |
-|---------|---------|
-| **Document Search** | Semantic search with vector embeddings |
-| **LLM Integration** | Local Ollama inference (no external APIs) |
-| **Workflow Automation** | Apache Airflow for scheduled ingestion |
-| **REST API** | FastAPI with OpenAPI documentation |
-| **Web UI** | Modern Next.js React interface |
-| **Vector Storage** | Chroma for semantic embeddings |
-| **Object Storage** | MinIO S3-compatible storage |
-| **Database** | PostgreSQL for metadata |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **📄 Document Ingestion** | Upload documents via MinIO, process with Airflow | ✅ Production |
+| **🔍 Semantic Search** | Find documents by meaning using vector embeddings | ✅ Production |
+| **🤖 LLM Integration** | Local Ollama inference for Q&A on documents | ✅ Production |
+| **⚡ REST API** | FastAPI with JSON request/response | ✅ Production |
+| **🎨 Web UI** | Next.js React interface for end-users | ✅ Production |
+| **📊 Vector Database** | Chroma with persistent storage | ✅ Production |
+| **🔄 Workflow Automation** | Apache Airflow DAGs for document pipeline | ✅ Production |
+| **💾 State Management** | PostgreSQL for Airflow metadata | ✅ Production |
+| **⚙️ Task Distribution** | Celery workers with Redis broker | ✅ Production |
 
-## 🔧 Technology Stack
+## 🔌 API Usage
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| Orchestration | Apache Airflow | 2.9.0 |
-| Backend | FastAPI | 0.104+ |
-| Frontend | Next.js | 14+ |
-| Vector DB | Chroma | 0.4.24+ |
-| LLM | Ollama | latest |
-| Storage | MinIO | latest |
-| Database | PostgreSQL | 13 |
-| Message Broker | Redis | 7 |
-| Containerization | Docker | 24+ |
-
-## 🚦 Health Check
-
+### Search Documents (Semantic)
 ```bash
-# Run comprehensive health check
-./scripts/health-check.sh
+curl -X POST http://localhost:8000/documents/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "How to implement caching?",
+    "top_k": 5
+  }'
 
-# Expected output:
-# ✓ Frontend running
-# ✓ API healthy
-# ✓ Airflow responsive
-# ✓ Vector DB connected
-# ✓ Storage accessible
+# Response: [
+#   {
+#     "id": "doc1_chunk_0",
+#     "content": "...",
+#     "similarity_score": 0.92,
+#     "metadata": {...}
+#   }, ...
+# ]
 ```
 
-## 📊 System Status
+### Ask LLM Question (with context)
+```bash
+curl -X POST http://localhost:8000/documents/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Explain caching strategies",
+    "top_k": 3
+  }'
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| Backend API | ✅ Ready | FastAPI + Uvicorn |
-| Frontend | ✅ Ready | Next.js React |
-| Airflow | ✅ Ready | Scheduler + Workers |
-| Chroma | ✅ Ready | Vector embeddings |
+# Response: {
+#   "question": "Explain caching strategies",
+#   "answer": "Based on the documents...",
+#   "sources": [
+#     {"id": "doc1", "score": 0.91}
+#   ],
+#   "model": "orca-mini",
+#   "timestamp": "2025-12-22T..."
+# }
+```
+
+### Health Check
+```bash
+curl http://localhost:8000/health
+
+# Response: {
+#   "status": "healthy",
+#   "timestamp": "2025-12-22T04:59:40..."
+# }
+```
+
+## 🔄 Airflow Pipeline Details
+
+### DAG: document_rag_ingestion_pipeline
+
+**Schedule**: Daily at 00:00 UTC
+**Timeout**: 2 hours per run
+
+**6-Task Pipeline**:
+
+| # | Task | Input | Output | Purpose |
+|---|------|-------|--------|---------|
+| 1 | `fetch_documents_from_minio` | Bucket name | `List[Dict]` documents | Retrieve documents from S3 |
+| 2 | `process_documents` | `List[Dict]` | `List[Dict]` chunks | Split into chunks (1000 tokens) |
+| 3 | `create_embeddings` | `List[Dict]` | `List[Dict]` + vectors | Generate 768-dim embeddings |
+| 4 | `upsert_to_chroma` | Embeddings | Upsert stats | Index into vector DB |
+| 5 | `validate_vector_db` | Stats | Validation result | Verify indexing success |
+| 6 | `notify_completion` | Result dict | Summary log | Log pipeline completion |
+
+**Data Flow**: XCom-based (inter-task communication, no files)
+
+**Retry Policy**: 1 retry on failure
+
+**Expected Metrics**:
+- ~100 documents per run
+- ~5-10 chunks per document
+- Processing time: 5-10 minutes
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**"Model not found" error**
+```bash
+# Verify Ollama models
+curl http://localhost:11434/api/tags
+
+# Expected models:
+# - orca-mini (LLM, 2GB)
+# - nomic-embed-text (embeddings, 768-dim)
+```
+
+**API returns 502 Bad Gateway**
+```bash
+# Check backend logs
+docker logs rag-backend | tail -20
+
+# Restart backend
+docker restart rag-backend
+```
+
+**Airflow tasks failing**
+```bash
+# Check task logs
+docker exec airflow-scheduler airflow tasks list --dag-id document_rag_ingestion_pipeline
+
+# Check worker logs
+docker logs airflow-worker | tail -50
+```
+
+**Vector DB dimension mismatch**
+```bash
+# Clear Chroma collection if dimension changed
+docker exec rag-backend rm -rf /opt/airflow/chroma_db
+
+# Restart pipeline
+docker restart airflow-scheduler
+```
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more solutions.
+
+## 📈 Performance Tuning
+
+| Parameter | Default | Recommendation |
+|-----------|---------|-----------------|
+| Chunk size | 1000 tokens | Increase to 2000 for longer docs |
+| Chunk overlap | 200 tokens | Keep at 20% of chunk size |
+| Top K results | 5 | Increase to 10 for better context |
+| Embedding dim | 768 | Use 384 for faster search |
+| Airflow workers | 1 | Increase for parallel ingestion |
+
+## 🔐 Security Considerations
+
+- **MinIO**: Default credentials (change in production)
+- **PostgreSQL**: Default password (change in production)
+- **API**: CORS enabled for localhost only
+- **LLM**: Local inference (no external API keys)
+- **Data**: Stored in Docker volumes (ensure backups)
+
+## 🚀 Deployment
+
+### Development
+```bash
+docker-compose -f docker-compose.yml up -d
+```
+
+### Production
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Kubernetes and cloud deployment.
+
+## 📖 Learning Resources
+
+- **LLM & Embeddings**: [Ollama docs](https://ollama.ai)
+- **Vector Database**: [Chroma docs](https://docs.trychroma.com)
+- **Workflow Orchestration**: [Airflow docs](https://airflow.apache.org)
+- **REST API**: [FastAPI docs](http://localhost:8000/docs)
+- **Frontend**: [Next.js docs](https://nextjs.org)
+
+## 🤝 Contributing
+
+For issues, feature requests, or improvements:
+1. Check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+2. Review existing issues
+3. Submit detailed bug reports with logs
+4. Create pull requests with tests
+
+## 📄 License
+
+MIT License - See LICENSE file for details
+
+## 📞 Support
+
+- **Documentation**: See `docs/` folder
+- **Issues**: Check TROUBLESHOOTING.md
+- **Architecture**: See SYSTEM_DESIGN_INTERVIEW.md
+- **API**: Visit http://localhost:8000/docs when running
 | Ollama | ✅ Ready | Local LLM inference |
 | MinIO | ✅ Ready | Object storage |
 | PostgreSQL | ✅ Ready | Metadata store |

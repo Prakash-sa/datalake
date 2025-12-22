@@ -4,16 +4,15 @@ RAG Service - Application use cases and orchestration
 
 import os
 import logging
-from typing import List, Optional, Dict
+from typing import List, Dict
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 
 import chromadb
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
-from domain.models import Document, SearchResult, QueryResult, EngineStats
+from domain.models import SearchResult
 
 # Configure logging
 logging.basicConfig(
@@ -223,9 +222,11 @@ class DocumentRAGService:
             ]
             context = "\n\n".join(context_parts)
 
-            # Generate response
-            prompt = ChatPromptTemplate.from_template(
-                """Based on the following documents, answer the user's question accurately.
+            # Try to generate response using LLM, but gracefully degrade to context-only mode
+            response_text = None
+            try:
+                prompt = ChatPromptTemplate.from_template(
+                    """Based on the following documents, answer the user's question accurately.
 If information is not in the documents, say so clearly.
 
 Documents:
@@ -234,15 +235,16 @@ Documents:
 User Question: {query}
 
 Answer:"""
-            )
-
-            try:
+                )
                 response_text = self.llm.invoke(
                     prompt.format(context=context, query=user_query)
                 )
             except Exception as llm_error:
-                logger.error(f"LLM generation failed: {llm_error}", exc_info=True)
-                response_text = f"Unable to generate response: {str(llm_error)[:100]}"
+                logger.warning(f"⚠️  LLM generation not available: {llm_error}")
+                # Gracefully degrade: use document context as answer
+                response_text = (
+                    f"Based on {len(relevant_docs)} relevant document(s):\n\n{context}"
+                )
 
             processing_time = (datetime.now() - start_time).total_seconds()
             self.stats["queries_processed"] += 1
