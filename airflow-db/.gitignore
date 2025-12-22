@@ -83,6 +83,9 @@ celerybeat-schedule
 
 # Environments
 .env
+.env.local
+.env.*.local
+.envrc
 .venv
 env/
 venv/
@@ -102,6 +105,16 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+.ruff_cache/
 
 # Mac
 .DS_Store
+
+# Airflow runtime artifacts
+logs/
+dags/__pycache__/
+plugins/__pycache__/
+datalake/
+profile/
+sql/
+airflow.db
