@@ -23,6 +23,7 @@ x-airflow-common: &airflow-common
     _AIRFLOW_WWW_USER_FIRSTNAME: Admin
     _AIRFLOW_WWW_USER_LASTNAME: User
     _AIRFLOW_WWW_USER_EMAIL: admin@example.com
+    _PIP_ADDITIONAL_REQUIREMENTS: "minio langchain langchain-community langchain-text-splitters chromadb"
     # RAG Integration
     MINIO_ENDPOINT: host.docker.internal:9000
     MINIO_ROOT_USER: minioadmin
@@ -36,8 +37,7 @@ x-airflow-common: &airflow-common
     redis:
       condition: service_healthy
   volumes:
-    - ./src/orchestration/dags:/opt/airflow/dags
-    - ./src/orchestration/config/airflow.cfg:/opt/airflow/airflow.cfg
+    - ./airflow-db/dags:/opt/airflow/dags
     - ./volumes/airflow_logs:/opt/airflow/logs
     - ./volumes/airflow_plugins:/opt/airflow/plugins
     - ./volumes/chroma_db:/opt/airflow/chroma_db
@@ -93,6 +93,7 @@ services:
       - airflow-init
     networks:
       - airflow-network
+      - rag-network
 
   airflow-scheduler:
     <<: *airflow-common
@@ -110,6 +111,7 @@ services:
       start_period: 30s
     networks:
       - airflow-network
+      - rag-network
 
   airflow-worker:
     <<: *airflow-common
@@ -127,6 +129,7 @@ services:
       start_period: 30s
     networks:
       - airflow-network
+      - rag-network
 
   airflow-triggerer:
     <<: *airflow-common
@@ -144,6 +147,7 @@ services:
       start_period: 30s
     networks:
       - airflow-network
+      - rag-network
 
   airflow-init:
     <<: *airflow-common

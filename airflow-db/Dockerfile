@@ -13,7 +13,11 @@ RUN pip install dbt-postgres==1.8.2 \
 	&& pip install apache-airflow-providers-trino \
 	&& pip install dbt-trino \
 	&& pip uninstall dbt \
-	&& pip install dbt-core==1.8.2
+	&& pip install dbt-core==1.8.2 \
+	&& pip install minio \
+	&& pip install langchain \
+	&& pip install langchain-community \
+	&& pip install chromadb
 
 
 USER root

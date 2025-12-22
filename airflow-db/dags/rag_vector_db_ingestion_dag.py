@@ -13,45 +13,37 @@ import logging
 import json
 from typing import List, Dict
 import os
+import pickle
 
 logger = logging.getLogger(__name__)
 
 # Default configuration
 default_args = {
     "owner": "data-engineering",
-    "retries": 2,
-    "retry_delay": timedelta(minutes=5),
+    "retries": 1,  # Reduced retries
+    "retry_delay": timedelta(minutes=1),
     "email_on_failure": False,
     "email_on_retry": False,
 }
 
 
 @task
-def fetch_documents_from_minio(**context) -> List[Dict]:
+def fetch_documents_from_minio(**context) -> str:
     """
     Fetch documents from MinIO (S3-compatible storage).
-
-    Retrieves:
-    - PDF documents
-    - Text files
-    - JSON structured data
-    - Database query results
-
-    Returns documents with metadata.
+    Returns path to the saved documents file instead of the documents themselves.
     """
     from minio import Minio
-    import io
+    import tempfile
 
     logger.info("📄 Fetching documents from MinIO...")
 
     try:
-        # MinIO client configuration
-        # Use Docker host gateway (172.17.0.1 for Docker Desktop Mac/Windows)
-        # or the container IP if available
-        minio_endpoint = os.getenv("MINIO_ENDPOINT", "host.docker.internal:9000")
+        minio_endpoint = os.getenv("MINIO_ENDPOINT", "minio:9000")
+        logger.info(f"🔌 Connecting to MinIO at {minio_endpoint}")
 
         minio_client = Minio(
-            endpoint=minio_endpoint,  # Can be set via env var
+            endpoint=minio_endpoint,
             access_key=os.getenv("MINIO_ROOT_USER", "minioadmin"),
             secret_key=os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"),
             secure=False,
@@ -60,7 +52,6 @@ def fetch_documents_from_minio(**context) -> List[Dict]:
         bucket_name = "documents"
         documents = []
 
-        # List all objects in bucket
         try:
             objects = minio_client.list_objects(bucket_name, recursive=True)
 
@@ -69,16 +60,12 @@ def fetch_documents_from_minio(**context) -> List[Dict]:
                     continue
 
                 try:
-                    # Download object
                     response = minio_client.get_object(bucket_name, obj.object_name)
                     content = response.read().decode("utf-8", errors="ignore")
 
-                    # Create document record
                     document = {
                         "id": obj.object_name.replace("/", "_"),
-                        "content": content[
-                            :5000
-                        ],  # First 5000 chars to avoid truncation
+                        "content": content[:5000],
                         "metadata": {
                             "source": "minio",
                             "bucket": bucket_name,
@@ -100,38 +87,41 @@ def fetch_documents_from_minio(**context) -> List[Dict]:
                     continue
 
             logger.info(f"✅ Fetched {len(documents)} documents from MinIO")
-            return documents
+
+            # Save to temporary file instead of returning
+            documents_file = f"/tmp/airflow_documents_{context['run_id']}.json"
+            with open(documents_file, "w") as f:
+                json.dump(documents, f)
+            logger.info(f"✅ Saved {len(documents)} documents to {documents_file}")
+            return documents_file
 
         except Exception as e:
             logger.error(f"❌ Error listing bucket contents: {e}")
-            # Return empty list if bucket doesn't exist yet
-            return []
+            return ""
 
     except Exception as e:
         logger.error(f"❌ Error connecting to MinIO: {e}")
-        return []
+        return ""
 
 
 @task
-def process_documents(documents: List[Dict]) -> List[Dict]:
+def process_documents(documents_file: str) -> str:
     """
     Process and prepare documents for embedding.
-
-    Operations:
-    - Clean and normalize text
-    - Remove duplicates
-    - Split large documents into chunks
-    - Add document structure metadata
+    Reads from file and saves back to file.
     """
-    # Handle None case when task is run independently
-    if documents is None:
-        logger.warning("⚠️ No documents provided to process_documents")
-        return []
-
-    logger.info(f"🔄 Processing {len(documents)} documents...")
+    if not documents_file or not os.path.exists(documents_file):
+        logger.warning("⚠️ No documents file provided")
+        return ""
 
     try:
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
+        # Read documents from file
+        with open(documents_file, "r") as f:
+            documents = json.load(f)
+
+        logger.info(f"🔄 Processing {len(documents)} documents...")
+
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=200, separators=["\n\n", "\n", " ", ""]
@@ -142,8 +132,6 @@ def process_documents(documents: List[Dict]) -> List[Dict]:
         for doc in documents:
             try:
                 content = doc["content"]
-
-                # Split large documents into chunks
                 chunks = text_splitter.split_text(content)
 
                 for i, chunk in enumerate(chunks):
@@ -166,7 +154,13 @@ def process_documents(documents: List[Dict]) -> List[Dict]:
                 continue
 
         logger.info(f"✅ Processed into {len(processed_docs)} document chunks")
-        return processed_docs
+
+        # Save processed documents
+        processed_file = documents_file.replace(".json", "_processed.json")
+        with open(processed_file, "w") as f:
+            json.dump(processed_docs, f)
+        logger.info(f"✅ Saved {len(processed_docs)} processed documents")
+        return processed_file
 
     except Exception as e:
         logger.error(f"❌ Error processing documents: {e}")
@@ -174,28 +168,37 @@ def process_documents(documents: List[Dict]) -> List[Dict]:
 
 
 @task
-def create_embeddings(documents: List[Dict]) -> List[Dict]:
+def create_embeddings(processed_file: str) -> str:
     """
     Create vector embeddings from document chunks.
 
+    Reads processed documents from file, generates embeddings, saves to new file.
     Uses Ollama nomic-embed-text model for consistent 768-dim embeddings.
     Same model as RAG engine to ensure compatibility.
     """
-    # Handle None case when task is run independently
-    if documents is None:
-        logger.warning("⚠️ No documents provided to create_embeddings")
-        return []
-
-    logger.info(f"🧮 Creating embeddings for {len(documents)} documents...")
+    # Handle missing file
+    if not processed_file or not os.path.exists(processed_file):
+        logger.warning(f"⚠️ Processed file not found: {processed_file}")
+        return ""
 
     try:
+        # Load processed documents from file
+        with open(processed_file, "r") as f:
+            documents = json.load(f)
+
+        if not documents:
+            logger.warning("⚠️ No documents in processed file")
+            return ""
+
+        logger.info(f"🧮 Creating embeddings for {len(documents)} documents...")
+
         from langchain_community.embeddings import OllamaEmbeddings
 
         # Initialize embeddings (same as RAG engine)
-        # Use Docker host gateway for cross-network access
-        ollama_base_url = os.getenv(
-            "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
-        )
+        # Use service name for Docker network communication
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+
+        logger.info(f"🤖 Using Ollama at {ollama_base_url}")
 
         embeddings_model = OllamaEmbeddings(
             model="nomic-embed-text", base_url=ollama_base_url
@@ -224,7 +227,14 @@ def create_embeddings(documents: List[Dict]) -> List[Dict]:
                 continue
 
         logger.info(f"✅ Created {len(embedded_docs)} embeddings (768-dim)")
-        return embedded_docs
+
+        # Save embeddings to file instead of returning
+        embeddings_file = processed_file.replace(".json", "_embeddings.json")
+        with open(embeddings_file, "w") as f:
+            json.dump(embedded_docs, f)
+        logger.info(f"✅ Saved {len(embedded_docs)} embeddings to {embeddings_file}")
+
+        return embeddings_file
 
     except Exception as e:
         logger.error(f"❌ Error creating embeddings: {e}")
@@ -232,21 +242,29 @@ def create_embeddings(documents: List[Dict]) -> List[Dict]:
 
 
 @task
-def upsert_to_chroma(embeddings: List[Dict]) -> Dict:
+def upsert_to_chroma(embeddings_file: str) -> str:
     """
     Upsert embeddings to Chroma vector database.
 
-    Updates existing embeddings and adds new ones.
+    Reads embeddings from file, updates existing embeddings and adds new ones.
     Uses 'documents' collection for indexed enterprise documents.
     """
-    # Handle None case when task is run independently
-    if embeddings is None:
-        logger.warning("⚠️ No embeddings provided to upsert_to_chroma")
-        return {"status": "skipped", "count": 0}
-
-    logger.info(f"💾 Upserting {len(embeddings)} embeddings to Chroma...")
+    # Handle missing file
+    if not embeddings_file or not os.path.exists(embeddings_file):
+        logger.warning(f"⚠️ Embeddings file not found: {embeddings_file}")
+        return ""
 
     try:
+        # Load embeddings from file
+        with open(embeddings_file, "r") as f:
+            embeddings = json.load(f)
+
+        if not embeddings:
+            logger.warning("⚠️ No embeddings in file")
+            return embeddings_file
+
+        logger.info(f"💾 Upserting {len(embeddings)} embeddings to Chroma...")
+
         import chromadb
         import uuid
 
@@ -301,8 +319,8 @@ def upsert_to_chroma(embeddings: List[Dict]) -> Dict:
             )
             logger.info(f"✅ Upserted {len(ids)} embeddings to Chroma")
 
-        # Return summary
-        return {
+        # Save upsert result summary to file
+        upsert_result = {
             "status": "success",
             "collection_name": collection_name,
             "embeddings_count": len(embeddings),
@@ -310,21 +328,34 @@ def upsert_to_chroma(embeddings: List[Dict]) -> Dict:
             "timestamp": datetime.now().isoformat(),
         }
 
+        result_file = embeddings_file.replace("_embeddings.json", "_upsert_result.json")
+        with open(result_file, "w") as f:
+            json.dump(upsert_result, f)
+        logger.info(f"✅ Saved upsert result to {result_file}")
+
+        return result_file
+
     except Exception as e:
         logger.error(f"❌ Error upserting to Chroma: {e}")
         raise
 
 
 @task
-def validate_vector_db() -> Dict:
+def validate_vector_db(upsert_result_file: str) -> str:
     """
     Validate vector database contents and quality.
 
+    Reads upsert result, validates database contents, and saves validation report.
     Performs:
     - Count verification
     - Sample query testing
     - Embedding quality checks
     """
+    # Handle missing file
+    if not upsert_result_file or not os.path.exists(upsert_result_file):
+        logger.warning(f"⚠️ Upsert result file not found: {upsert_result_file}")
+        return ""
+
     logger.info("🔍 Validating vector database...")
 
     try:
@@ -339,55 +370,89 @@ def validate_vector_db() -> Dict:
             collection = client.get_collection(name="documents")
         except:
             logger.warning("⚠️ Documents collection not found")
-            return {
+            validation_result = {
                 "status": "warning",
                 "total_embeddings": 0,
                 "sample_query_results": 0,
                 "message": "Collection not found",
             }
+        else:
+            # Get collection stats
+            count = collection.count()
+            logger.info(f"📊 Total embeddings in collection: {count}")
 
-        # Get collection stats
-        count = collection.count()
-        logger.info(f"📊 Total embeddings in collection: {count}")
+            # Test a sample query if collection has data
+            query_results = 0
+            if count > 0:
+                test_query = "document data information"
+                results = collection.query(query_texts=[test_query], n_results=3)
 
-        # Test a sample query if collection has data
-        query_results = 0
-        if count > 0:
-            test_query = "document data information"
-            results = collection.query(query_texts=[test_query], n_results=3)
+                query_results = (
+                    len(results["documents"][0]) if results["documents"] else 0
+                )
+                logger.info(f"✅ Sample query returned {query_results} results")
 
-            query_results = len(results["documents"][0]) if results["documents"] else 0
-            logger.info(f"✅ Sample query returned {query_results} results")
+                # Verify embeddings exist and have correct dimensions
+                sample = collection.get(limit=1)
+                if sample["embeddings"]:
+                    embedding_dim = len(sample["embeddings"][0])
+                    logger.info(
+                        f"✅ Embedding dimension verified: {embedding_dim} dims"
+                    )
 
-            # Verify embeddings exist and have correct dimensions
-            sample = collection.get(limit=1)
-            if sample["embeddings"]:
-                embedding_dim = len(sample["embeddings"][0])
-                logger.info(f"✅ Embedding dimension verified: {embedding_dim} dims")
+            validation_result = {
+                "status": "success",
+                "total_embeddings": count,
+                "sample_query_results": query_results,
+                "validation_time": datetime.now().isoformat(),
+            }
 
-        return {
-            "status": "success",
-            "total_embeddings": count,
-            "sample_query_results": query_results,
-            "validation_time": datetime.now().isoformat(),
-        }
+        # Save validation result to file
+        validation_file = upsert_result_file.replace(
+            "_upsert_result.json", "_validation.json"
+        )
+        with open(validation_file, "w") as f:
+            json.dump(validation_result, f)
+        logger.info(f"✅ Saved validation result to {validation_file}")
+
+        return validation_file
 
     except Exception as e:
         logger.error(f"❌ Validation failed: {e}")
-        return {
+        # Save error result to file
+        validation_result = {
             "status": "error",
             "error": str(e),
             "validation_time": datetime.now().isoformat(),
         }
+        validation_file = upsert_result_file.replace(
+            "_upsert_result.json", "_validation.json"
+        )
+        with open(validation_file, "w") as f:
+            json.dump(validation_result, f)
+        return validation_file
 
 
 @task
-def notify_completion(validation_result: Dict) -> None:
+def notify_completion(validation_file: str) -> None:
     """
     Send completion notification with summary.
 
-    Logs the final status and can be extended to send emails/Slack messages.
+    Reads validation result from file and logs the final status.
+    Can be extended to send emails/Slack messages.
     """
+    # Handle missing file
+    if not validation_file or not os.path.exists(validation_file):
+        logger.warning(f"⚠️ Validation file not found: {validation_file}")
+        return
+
+    try:
+        with open(validation_file, "r") as f:
+            validation_result = json.load(f)
+    except Exception as e:
+        logger.error(f"❌ Failed to read validation file: {e}")
+        return
+
     logger.info("📬 Document RAG pipeline completed!")
     logger.info(f"📊 Summary:")
     logger.info(
@@ -430,7 +495,7 @@ with DAG(
     upsert_result = upsert_to_chroma(embeddings)
 
     # Task 5: Validate vector database
-    validation = validate_vector_db()
+    validation = validate_vector_db(upsert_result)
 
     # Task 6: Notify completion
     notify = notify_completion(validation)
