@@ -168,7 +168,7 @@ services:
 
   rag-backend:
     build:
-      context: ./src/services/rag-engine
+      context: ./rag-query-engine/backend
       dockerfile: Dockerfile
     container_name: rag-backend
     ports:
@@ -187,7 +187,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - ./src/services/rag-engine:/app
+      - ./rag-query-engine/backend:/app
       - ./volumes/chroma_db:/app/chroma_db
     networks:
       - rag-network
@@ -200,7 +200,7 @@ services:
 
   rag-frontend:
     build:
-      context: ./src/services/frontend
+      context: ./rag-query-engine/frontend
       dockerfile: Dockerfile
     container_name: rag-frontend
     ports:
