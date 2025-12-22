@@ -73,25 +73,22 @@ class DocumentRAGService:
                 temperature=self.temperature,
             )
             logger.info(f"✅ LLM ({self.llm_model}) initialized")
-            
+
             # Initialize Chroma client
             Path(self.chroma_path).mkdir(parents=True, exist_ok=True)
             self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
             logger.info(f"✅ Chroma client initialized at {self.chroma_path}")
-            
+
             # Get or create documents collection
             self.chroma_collection = self.chroma_client.get_or_create_collection(
-                name="documents",
-                metadata={"hnsw:space": "cosine"}
+                name="documents", metadata={"hnsw:space": "cosine"}
             )
             logger.info("✅ Chroma 'documents' collection ready")
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to initialize RAG components: {e}", exc_info=True)
             self.stats["errors"] += 1
-            raise ConnectionError(
-                f"Failed to initialize RAG components: {e}"
-            ) from e
+            raise ConnectionError(f"Failed to initialize RAG components: {e}") from e
 
     def index_documents(self, documents: List[dict]) -> dict:
         """Index documents into the vector store."""
@@ -155,11 +152,11 @@ class DocumentRAGService:
             if not self.chroma_collection:
                 logger.warning("❌ Chroma collection not initialized")
                 return []
-            
+
             # Check collection count
             collection_count = self.chroma_collection.count()
             logger.info(f"📊 Chroma collection has {collection_count} documents")
-            
+
             if collection_count == 0:
                 logger.debug("No documents in Chroma collection")
                 return []
@@ -168,21 +165,25 @@ class DocumentRAGService:
             results = self.chroma_collection.query(
                 query_texts=[query],
                 n_results=k,
-                include=["documents", "metadatas", "distances"]
+                include=["documents", "metadatas", "distances"],
             )
-            
+
             documents = []
             for doc_text, metadata, distance in zip(
-                results["documents"][0], results["metadatas"][0], results["distances"][0]
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0],
             ):
                 similarity = 1 - distance  # Convert distance to similarity
                 if similarity >= min_score:
-                    documents.append({
-                        "id": metadata.get("id", "doc"),
-                        "content": doc_text[:500],
-                        "metadata": metadata,
-                        "relevance_score": round(float(similarity), 3),
-                    })
+                    documents.append(
+                        {
+                            "id": metadata.get("id", "doc"),
+                            "content": doc_text[:500],
+                            "metadata": metadata,
+                            "relevance_score": round(float(similarity), 3),
+                        }
+                    )
 
             return documents
         except ValueError as e:
