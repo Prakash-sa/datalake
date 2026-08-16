@@ -26,6 +26,7 @@ SQL query execution engine for Apache Iceberg tables in Trino. This module provi
 - **Eval**: deterministic retrieval and answer checks are exposed through `POST /eval`
 - **Open Source**: MIT license, contribution guide, security policy, and desktop build packaging
 - **Desktop App**: Electron wrapper for macOS, Windows, and Linux distribution
+- **Third-Party Notices**: dependency and model license tracking starts in `../THIRD_PARTY_NOTICES.md`
 
 ## Architecture
 

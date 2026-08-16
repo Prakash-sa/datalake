@@ -1,0 +1,44 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "rag-desktop-v*"
+
+jobs:
+  package:
+    name: Package ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - windows-latest
+          - ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rag-query-engine/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: rag-query-engine/frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Install backend dependencies
+        run: python -m pip install -r ../backend/requirements.txt pyinstaller
+      - name: Build desktop package
+        run: npm run dist
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-query-engine-${{ matrix.os }}
+          path: rag-query-engine/frontend/dist/**
+          if-no-files-found: error

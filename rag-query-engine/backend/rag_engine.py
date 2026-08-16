@@ -285,34 +285,6 @@ class DocumentRAGEngine:
             logger.error(f"❌ Search failed: {e}", exc_info=True)
             self.stats["errors"] += 1
             return []
-                if similarity >= min_score:
-                    similarities.append((doc_id, similarity))
-
-            # Sort by similarity and get top k
-            top_results = sorted(similarities, key=lambda x: x[1], reverse=True)[:k]
-
-            documents = []
-            for doc_id, score in top_results:
-                doc_data = self.documents_store[doc_id]
-                documents.append(
-                    {
-                        "id": doc_id,
-                        "content": doc_data["content"][:500],
-                        "metadata": doc_data["metadata"],
-                        "relevance_score": round(float(score), 3),
-                    }
-                )
-
-            logger.info(f"✅ Found {len(documents)} relevant documents")
-            return documents
-        except ValueError as e:
-            logger.warning(f"⚠️  Search validation error: {e}")
-            self.stats["errors"] += 1
-            raise
-        except Exception as e:
-            logger.error(f"❌ Document search failed: {e}", exc_info=True)
-            self.stats["errors"] += 1
-            return []
 
     def query_documents(self, user_query: str, k: int = 5, timeout: int = 30) -> dict:
         """

@@ -15,7 +15,7 @@
     "lint": "tsc --noEmit",
     "electron": "electron .",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "backend:dist": "python3 -m PyInstaller ../backend/rag-backend.spec --distpath ../backend/dist --workpath ../backend/build",
+    "backend:dist": "node scripts/package-backend.js",
     "dist:electron": "electron-builder",
     "dist": "npm run build && npm run backend:dist && npm run dist:electron"
   },
