@@ -2,8 +2,8 @@
 RAG Service - Application use cases and orchestration
 """
 
-import os
 import logging
+import os
 from typing import List, Dict
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +58,19 @@ class DocumentRAGService:
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
         self._initialize_components()
 
+    @staticmethod
+    def _normalize_metadata(metadata: Dict) -> Dict:
+        """Keep only Chroma-compatible primitive metadata values."""
+        normalized = {}
+        for key, value in (metadata or {}).items():
+            if value is None:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                normalized[str(key)] = value
+            else:
+                normalized[str(key)] = str(value)
+        return normalized
+
     def _initialize_components(self) -> None:
         """Initialize RAG components including Chroma vector DB."""
         try:
@@ -99,6 +112,11 @@ class DocumentRAGService:
             indexed_count = 0
             errors = []
 
+            ids = []
+            contents = []
+            metadatas = []
+            embeddings = []
+
             for idx, doc in enumerate(documents):
                 try:
                     doc_id = doc.get("id", "")
@@ -109,16 +127,32 @@ class DocumentRAGService:
                         continue
 
                     embedding = self.embeddings.embed_query(content)
+                    metadata = self._normalize_metadata(doc.get("metadata", {}))
+                    metadata["id"] = doc_id
+
                     self.documents_store[doc_id] = {
                         "content": content,
                         "embedding": embedding,
-                        "metadata": doc.get("metadata", {}),
+                        "metadata": metadata,
                     }
+
+                    ids.append(doc_id)
+                    contents.append(content)
+                    metadatas.append(metadata)
+                    embeddings.append(embedding)
                     indexed_count += 1
 
                 except Exception as e:
                     errors.append(f"Document {idx}: {str(e)}")
                     logger.warning(f"Failed to index document {idx}: {e}")
+
+            if ids:
+                self.chroma_collection.upsert(
+                    ids=ids,
+                    documents=contents,
+                    metadatas=metadatas,
+                    embeddings=embeddings,
+                )
 
             self.stats["documents_indexed"] += indexed_count
             return {
@@ -160,9 +194,9 @@ class DocumentRAGService:
                 logger.debug("No documents in Chroma collection")
                 return []
 
-            # Query Chroma
+            query_embedding = self.embeddings.embed_query(query)
             results = self.chroma_collection.query(
-                query_texts=[query],
+                query_embeddings=[query_embedding],
                 n_results=k,
                 include=["documents", "metadatas", "distances"],
             )
@@ -192,7 +226,13 @@ class DocumentRAGService:
             logger.error(f"❌ Document search failed: {e}", exc_info=True)
             return []
 
-    def query_documents(self, user_query: str, k: int = 5, timeout: int = 30) -> dict:
+    def query_documents(
+        self,
+        user_query: str,
+        k: int = 5,
+        timeout: int = 30,
+        min_score: float = None,
+    ) -> dict:
         """Execute RAG pipeline: search documents, retrieve context, generate response."""
         try:
             if not user_query or len(user_query) > self.MAX_QUERY_LENGTH:
@@ -202,7 +242,7 @@ class DocumentRAGService:
             start_time = datetime.now()
 
             # Search for relevant documents
-            relevant_docs = self.search_documents(user_query, k=k)
+            relevant_docs = self.search_documents(user_query, k=k, min_score=min_score)
 
             if not relevant_docs:
                 processing_time = (datetime.now() - start_time).total_seconds()
@@ -274,8 +314,46 @@ Answer:"""
 
     def get_stats(self) -> dict:
         """Get engine statistics."""
+        total_documents = 0
+        if self.chroma_collection:
+            total_documents = self.chroma_collection.count()
+
         return {
             **self.stats,
-            "total_documents": len(self.documents_store),
+            "total_documents": total_documents,
             "timestamp": datetime.now().isoformat(),
+        }
+
+    def get_readiness(self) -> dict:
+        """Report production operating capabilities."""
+        stats = self.get_stats()
+        return {
+            "status": "ready",
+            "capabilities": {
+                "loop_engineering": {
+                    "status": "enabled",
+                    "signals": [
+                        "queries_processed",
+                        "errors",
+                        "processing_time_seconds",
+                        "retrieved_documents",
+                    ],
+                },
+                "memory": {
+                    "status": "enabled",
+                    "provider": "chroma",
+                    "persistent_path": self.chroma_path,
+                    "documents": stats["total_documents"],
+                },
+                "eval": {
+                    "status": "enabled",
+                    "endpoint": "/eval",
+                    "checks": ["answer_contains", "min_documents", "min_relevance"],
+                },
+                "open_source": {
+                    "status": "prepared",
+                    "assets": ["LICENSE", "CONTRIBUTING.md", "SECURITY.md"],
+                },
+            },
+            "stats": stats,
         }

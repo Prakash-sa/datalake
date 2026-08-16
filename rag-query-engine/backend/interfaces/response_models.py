@@ -2,8 +2,8 @@
 Response Models - API output with Pydantic
 """
 
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from typing import List, Dict, Any
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -11,7 +11,7 @@ class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str
-    timestamp: str = datetime.now().isoformat()
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 class StatsResponse(BaseModel):
@@ -38,7 +38,7 @@ class SearchResponse(BaseModel):
 
     status: str
     results: List[DocumentResultItem]
-    timestamp: str = datetime.now().isoformat()
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 class QueryResponse(BaseModel):
@@ -50,4 +50,38 @@ class QueryResponse(BaseModel):
     retrieved_documents: List[DocumentResultItem]
     document_count: int
     processing_time_seconds: float
-    timestamp: str = datetime.now().isoformat()
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class ReadinessResponse(BaseModel):
+    """Production readiness capabilities response."""
+
+    status: str
+    capabilities: Dict[str, Any]
+    stats: Dict[str, Any]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class EvalCaseResult(BaseModel):
+    """Single eval result."""
+
+    id: str
+    passed: bool
+    answer_contains_passed: bool
+    min_documents_passed: bool
+    min_relevance_passed: bool
+    document_count: int
+    max_relevance: float
+    missing_terms: List[str]
+    processing_time_seconds: float
+
+
+class EvalResponse(BaseModel):
+    """Batch eval response."""
+
+    status: str
+    passed: bool
+    total_cases: int
+    passed_cases: int
+    results: List[EvalCaseResult]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())

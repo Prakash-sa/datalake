@@ -3,18 +3,20 @@ API Layer - HTTP routes and controllers
 """
 
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query
-from typing import List
+from fastapi import APIRouter, HTTPException
 
 from application.rag_service import DocumentRAGService
 from interfaces import (
     DocumentIndexRequest,
     DocumentSearchRequest,
     DocumentQueryRequest,
+    EvalRequest,
     HealthResponse,
     StatsResponse,
     SearchResponse,
     QueryResponse,
+    ReadinessResponse,
+    EvalResponse,
 )
 
 router = APIRouter()
@@ -46,6 +48,15 @@ async def get_stats():
 
     stats = rag_service.get_stats()
     return StatsResponse(**stats)
+
+
+@router.get("/readiness", response_model=ReadinessResponse)
+async def get_readiness():
+    """Report production operating capabilities."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    return rag_service.get_readiness()
 
 
 @router.post("/documents/index")
@@ -85,7 +96,11 @@ async def query_documents(request: DocumentQueryRequest):
         raise HTTPException(status_code=500, detail="RAG service not initialized")
 
     try:
-        result = rag_service.query_documents(user_query=request.query, k=request.k)
+        result = rag_service.query_documents(
+            user_query=request.query,
+            k=request.k,
+            min_score=request.min_score,
+        )
 
         if result.get("status") == "error":
             raise HTTPException(status_code=500, detail=result.get("error"))
@@ -95,3 +110,65 @@ async def query_documents(request: DocumentQueryRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/eval", response_model=EvalResponse)
+async def run_eval(request: EvalRequest):
+    """Run deterministic retrieval and answer checks for release gating."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    eval_results = []
+    passed_cases = 0
+
+    for case in request.cases:
+        result = rag_service.query_documents(
+            user_query=case.query,
+            k=request.k,
+            min_score=case.min_relevance,
+        )
+        documents = result.get("retrieved_documents", [])
+        answer = result.get("answer", "").lower()
+        expected_terms = case.answer_contains or []
+        missing_terms = [
+            term for term in expected_terms if term.lower() not in answer
+        ]
+        max_relevance = max(
+            [doc.get("relevance_score", 0.0) for doc in documents],
+            default=0.0,
+        )
+
+        answer_contains_passed = not missing_terms
+        min_documents_passed = len(documents) >= case.min_documents
+        min_relevance_passed = max_relevance >= case.min_relevance
+        passed = (
+            answer_contains_passed
+            and min_documents_passed
+            and min_relevance_passed
+            and result.get("status") != "error"
+        )
+
+        if passed:
+            passed_cases += 1
+
+        eval_results.append(
+            {
+                "id": case.id,
+                "passed": passed,
+                "answer_contains_passed": answer_contains_passed,
+                "min_documents_passed": min_documents_passed,
+                "min_relevance_passed": min_relevance_passed,
+                "document_count": len(documents),
+                "max_relevance": max_relevance,
+                "missing_terms": missing_terms,
+                "processing_time_seconds": result.get("processing_time_seconds", 0.0),
+            }
+        )
+
+    return {
+        "status": "success",
+        "passed": passed_cases == len(request.cases),
+        "total_cases": len(request.cases),
+        "passed_cases": passed_cases,
+        "results": eval_results,
+    }

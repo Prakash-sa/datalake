@@ -30,6 +30,7 @@ class ConfigManager:
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "mistral")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
+    CHROMA_PATH: str = os.getenv("CHROMA_PATH", "./chroma_db")
 
     # Resource Limits
     MAX_DOCUMENTS: int = int(os.getenv("MAX_DOCUMENTS", "10000"))

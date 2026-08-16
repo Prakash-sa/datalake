@@ -42,3 +42,22 @@ class DocumentQueryRequest(BaseModel):
     min_score: Optional[float] = Field(
         0.0, ge=0.0, le=1.0, description="Minimum relevance score"
     )
+
+
+class EvalCase(BaseModel):
+    """Single deterministic eval case for retrieval and answer grounding."""
+
+    id: str = Field(..., min_length=1, max_length=120)
+    query: str = Field(..., min_length=1, max_length=1000)
+    answer_contains: Optional[List[str]] = Field(
+        default=None, description="Terms expected in the generated answer"
+    )
+    min_documents: int = Field(1, ge=0, le=100)
+    min_relevance: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class EvalRequest(BaseModel):
+    """Batch eval request."""
+
+    cases: List[EvalCase] = Field(..., min_items=1, max_items=50)
+    k: int = Field(5, ge=1, le=100)

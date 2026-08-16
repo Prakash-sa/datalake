@@ -1,15 +1,93 @@
 'use client';
 
-import { useState } from 'react';
-import { Loader2, Send, AlertCircle, FileText, Zap } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  Brain,
+  CheckCircle2,
+  FileText,
+  Gauge,
+  GitFork,
+  Loader2,
+  RefreshCw,
+  Send,
+  Sparkles,
+} from 'lucide-react';
+
+type RetrievedDocument = {
+  id: string;
+  content: string;
+  relevance_score: number;
+  metadata?: Record<string, unknown>;
+};
+
+type QueryResult = {
+  status: 'success' | 'no_results' | 'error';
+  query: string;
+  answer?: string;
+  retrieved_documents?: RetrievedDocument[];
+  document_count?: number;
+  processing_time_seconds?: number;
+  error?: string;
+};
+
+type Capability = {
+  name: string;
+  description: string;
+  status: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+const capabilities: Capability[] = [
+  {
+    name: 'Loop Engineering',
+    description: 'Observe retrieval quality, latency, and errors so prompts and pipelines can be tightened continuously.',
+    status: 'Instrumented',
+    icon: RefreshCw,
+  },
+  {
+    name: 'Memory',
+    description: 'Persistent Chroma collections back document recall across API restarts and desktop sessions.',
+    status: 'Persistent',
+    icon: Brain,
+  },
+  {
+    name: 'Eval',
+    description: 'Use the eval endpoint and source-grounded answers to regression-test retrieval before releases.',
+    status: 'API Ready',
+    icon: Gauge,
+  },
+  {
+    name: 'Open Source',
+    description: 'Packaged desktop builds, docs, license, security policy, and contribution workflow are first-class.',
+    status: 'Prepared',
+    icon: GitFork,
+  },
+];
+
+const examples = [
+  'Summarize the pipeline architecture and key dependencies.',
+  'Which documents mention production deployment risks?',
+  'What should be monitored before a release?',
+];
 
 export default function DocumentRAGInterface() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState(null);
+  const [results, setResults] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+    [],
+  );
+
+  useEffect(() => {
+    setIsDesktop(Boolean(window.desktop?.isElectron));
+  }, []);
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!query.trim()) return;
 
@@ -17,164 +95,176 @@ export default function DocumentRAGInterface() {
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query, k: 5 }),
+        body: JSON.stringify({ query, k: 5, min_score: 0 }),
       });
 
-      if (!response.ok) throw new Error('Query failed');
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || 'Query failed');
+      }
 
-      const data = await response.json();
+      const data = (await response.json()) as QueryResult;
       setResults(data);
     } catch (err) {
-      setError(err.message || 'Failed to process query');
+      setError(err instanceof Error ? err.message : 'Failed to process query');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
-            <Zap className="w-8 h-8 text-blue-400" />
-            Document RAG Engine
-          </h1>
-          <p className="text-slate-300">
-            Ask questions about your enterprise documents using semantic search and LLM analysis
-          </p>
-        </div>
+  const documents = results?.retrieved_documents ?? [];
 
-        {/* Query Input */}
-        <form onSubmit={handleSubmit} className="mb-8">
-          <div className="bg-slate-800 rounded-lg p-6 shadow-xl border border-slate-700">
-            <label className="block text-sm font-medium text-slate-300 mb-3">
-              What would you like to know about your documents?
-            </label>
-            <div className="flex flex-col gap-2">
-              <textarea
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g., What is Apache Airflow and how does it work? or Explain the document processing pipeline..."
-                className="flex-1 bg-slate-700 text-white rounded px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans text-sm min-h-24"
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white px-6 py-3 rounded font-medium flex items-center gap-2 transition w-fit"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-                Search & Analyze
-              </button>
+  return (
+    <main className="min-h-screen bg-zinc-950 text-zinc-100">
+      <section className="border-b border-zinc-800 bg-zinc-950">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6 sm:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-sm text-cyan-300">
+                <Sparkles className="h-4 w-4" />
+                <span>{isDesktop ? 'Desktop' : 'Web'} production console</span>
+              </div>
+              <h1 className="text-3xl font-semibold tracking-normal text-white sm:text-4xl">
+                Document RAG Engine
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
+                Query indexed documents, inspect source grounding, and validate the operating loop before shipping.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:min-w-[520px]">
+              {capabilities.map((item) => (
+                <div key={item.name} className="rounded-md border border-zinc-800 bg-zinc-900 p-3">
+                  <item.icon className="mb-3 h-5 w-5 text-cyan-300" />
+                  <div className="font-medium text-white">{item.name}</div>
+                  <div className="mt-1 text-xs text-emerald-300">{item.status}</div>
+                </div>
+              ))}
             </div>
           </div>
-        </form>
+        </div>
+      </section>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-900 border border-red-700 rounded-lg p-4 mb-8 flex gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-red-100">{error}</p>
-          </div>
-        )}
+      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
+          <form onSubmit={handleSubmit} className="rounded-md border border-zinc-800 bg-zinc-900 p-5 shadow-2xl">
+            <label className="block text-sm font-medium text-zinc-200" htmlFor="query">
+              Ask a document-grounded question
+            </label>
+            <textarea
+              id="query"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="What should I know before deploying this pipeline?"
+              className="mt-3 min-h-32 w-full resize-y rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 font-sans text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              disabled={loading}
+            />
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {examples.map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => setQuery(example)}
+                    className="rounded-md border border-zinc-700 px-3 py-2 text-left text-xs text-zinc-300 transition hover:border-cyan-500 hover:text-white"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="submit"
+                disabled={loading || !query.trim()}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Search
+              </button>
+            </div>
+          </form>
 
-        {/* Results */}
-        {results && (
-          <div className="space-y-6">
-            {/* LLM Response */}
-            {results.status === 'success' && results.answer && (
-              <div className="bg-slate-800 rounded-lg p-6 shadow-xl border border-slate-700">
-                <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-blue-400" />
+          {error && (
+            <div className="flex gap-3 rounded-md border border-red-800 bg-red-950/70 p-4">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
+              <p className="text-sm text-red-100">{error}</p>
+            </div>
+          )}
+
+          {results?.status === 'success' && (
+            <div className="rounded-md border border-zinc-800 bg-zinc-900 p-5">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
+                  <Sparkles className="h-5 w-5 text-cyan-300" />
                   Answer
                 </h2>
-                <div className="bg-slate-700 rounded p-4 text-slate-100 leading-relaxed">
-                  {results.answer}
+                <div className="flex gap-2 text-xs text-zinc-400">
+                  <span>{results.document_count ?? documents.length} sources</span>
+                  <span>{results.processing_time_seconds ?? 0}s</span>
                 </div>
               </div>
-            )}
+              <p className="whitespace-pre-wrap rounded-md bg-zinc-950 p-4 text-sm leading-7 text-zinc-100">
+                {results.answer}
+              </p>
+            </div>
+          )}
 
-            {/* Retrieved Documents */}
-            {results.retrieved_documents && results.retrieved_documents.length > 0 && (
-              <div className="bg-slate-800 rounded-lg p-6 shadow-xl border border-slate-700">
-                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-slate-400" />
-                  Source Documents ({results.document_count})
-                </h2>
-                <div className="space-y-4">
-                  {results.retrieved_documents.map((doc, idx) => (
-                    <div key={idx} className="bg-slate-700 rounded-lg p-4 border border-slate-600">
-                      <div className="flex items-start justify-between mb-2">
-                        <span className="font-medium text-blue-400">
-                          Document {idx + 1}
-                        </span>
-                        <span className="bg-blue-900 text-blue-200 text-xs px-2 py-1 rounded">
-                          {(doc.relevance_score * 100).toFixed(1)}% match
-                        </span>
-                      </div>
-                      <p className="text-slate-300 text-sm line-clamp-3">
-                        {doc.content}
-                      </p>
-                      {doc.metadata && Object.keys(doc.metadata).length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-600">
-                          <p className="text-xs text-slate-400">
-                            {Object.entries(doc.metadata).map(([key, value]) => (
-                              <span key={key} className="inline-block mr-3">
-                                <strong>{key}:</strong> {String(value)}
-                              </span>
-                            ))}
-                          </p>
-                        </div>
-                      )}
+          {results?.status === 'no_results' && (
+            <div className="rounded-md border border-zinc-800 bg-zinc-900 p-8 text-center">
+              <FileText className="mx-auto mb-3 h-12 w-12 text-zinc-600" />
+              <p className="font-medium text-zinc-200">No relevant documents found</p>
+              <p className="mt-1 text-sm text-zinc-500">Index more documents or lower the minimum relevance threshold.</p>
+            </div>
+          )}
+
+          {documents.length > 0 && (
+            <div className="rounded-md border border-zinc-800 bg-zinc-900 p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-white">
+                <FileText className="h-5 w-5 text-zinc-400" />
+                Source Documents
+              </h2>
+              <div className="space-y-3">
+                {documents.map((doc, idx) => (
+                  <article key={`${doc.id}-${idx}`} className="rounded-md border border-zinc-800 bg-zinc-950 p-4">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <span className="font-medium text-cyan-300">Document {idx + 1}</span>
+                      <span className="rounded-md bg-emerald-950 px-2 py-1 text-xs text-emerald-300">
+                        {(doc.relevance_score * 100).toFixed(1)}% match
+                      </span>
                     </div>
-                  ))}
+                    <p className="line-clamp-4 text-sm leading-6 text-zinc-300">{doc.content}</p>
+                    {doc.metadata && Object.keys(doc.metadata).length > 0 && (
+                      <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                        {Object.entries(doc.metadata).map(([key, value]) => (
+                          <span key={key} className="mr-3 inline-block">
+                            <strong>{key}:</strong> {String(value)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <aside className="space-y-4">
+          {capabilities.map((item) => (
+            <div key={item.name} className="rounded-md border border-zinc-800 bg-zinc-900 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 font-medium text-white">
+                  <item.icon className="h-5 w-5 text-cyan-300" />
+                  {item.name}
                 </div>
+                <CheckCircle2 className="h-4 w-4 text-emerald-300" />
               </div>
-            )}
-
-            {/* No Results State */}
-            {results.status === 'no_results' && (
-              <div className="bg-slate-700 border border-slate-600 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-                <p className="text-slate-300 font-medium">No documents found</p>
-                <p className="text-slate-400 text-sm mt-1">
-                  Try a different query or index more documents
-                </p>
-              </div>
-            )}
-
-            {/* Error Result */}
-            {results.status === 'error' && (
-              <div className="bg-red-900 border border-red-700 rounded-lg p-4">
-                <p className="text-red-100 font-medium">Query Error:</p>
-                <p className="text-red-200 text-sm mt-2">{results.error}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!results && !loading && (
-          <div className="bg-slate-800 rounded-lg p-12 text-center border border-slate-700">
-            <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-400 text-lg">
-              Enter a question about your documents to get started
-            </p>
-            <p className="text-slate-500 text-sm mt-2">
-              The engine will search through indexed documents and provide an AI-powered answer
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
+              <p className="text-sm leading-6 text-zinc-400">{item.description}</p>
+            </div>
+          ))}
+        </aside>
+      </section>
+    </main>
   );
 }

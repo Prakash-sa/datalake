@@ -50,6 +50,7 @@ try:
         embedding_model=config.EMBEDDING_MODEL,
         llm_model=config.LLM_MODEL,
         temperature=config.LLM_TEMPERATURE,
+        chroma_path=config.CHROMA_PATH,
     )
     initialize_rag_service(rag_service)
     logger.info("✅ RAG service initialized successfully")

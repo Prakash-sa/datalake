@@ -56,7 +56,7 @@ out/
 .cache/
 .turbo/
 .vercel/
-package-lock.json
+*.tsbuildinfo
 yarn.lock
 pnpm-lock.yaml
 

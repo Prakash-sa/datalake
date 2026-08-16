@@ -2,6 +2,8 @@
 
 SQL query execution engine for Apache Iceberg tables in Trino. This module provides a simple REST API for executing SQL queries and returning results.
 
+> Current implementation note: the active app in this module is the Document RAG Engine under `backend/` and `frontend/`, using FastAPI, Chroma, Ollama, Next.js, and Electron desktop packaging.
+
 ## Features
 
 ### 1. **Direct SQL Execution**
@@ -17,6 +19,13 @@ SQL query execution engine for Apache Iceberg tables in Trino. This module provi
 - **Backend**: FastAPI + Trino
 - **Frontend**: Next.js + React with query interface
 - **Containerized**: Docker Compose for easy deployment
+
+### 4. **Production Readiness Surface**
+- **Loop Engineering**: retrieval results, latency, query counts, and error counts are visible through API responses and `/stats`
+- **Memory**: document embeddings persist in Chroma instead of process memory
+- **Eval**: deterministic retrieval and answer checks are exposed through `POST /eval`
+- **Open Source**: MIT license, contribution guide, security policy, and desktop build packaging
+- **Desktop App**: Electron wrapper for macOS, Windows, and Linux distribution
 
 ## Architecture
 
@@ -75,6 +84,7 @@ SQL query execution engine for Apache Iceberg tables in Trino. This module provi
 
 ### Prerequisites
 - Docker & Docker Compose
+- Node.js 22.12.0+ and npm 10+ for the Next.js/Electron frontend
 - Ollama installed (or use containerized version)
 - Trino running (from parent `trino-dlake/`)
 
@@ -123,6 +133,21 @@ cd frontend
 npm install
 npm run dev
 ```
+
+**Desktop App:**
+```bash
+cd frontend
+npm install
+npm run electron:dev
+```
+
+Build installers:
+```bash
+cd frontend
+npm run dist
+```
+
+By default Electron loads `http://localhost:3000`. Set `RAG_DESKTOP_URL` to point the desktop shell at a hosted Next.js deployment.
 
 ## API Endpoints
 
@@ -189,6 +214,43 @@ Content-Type: application/json
 ```bash
 GET /health
 ```
+
+### 6. **Production Readiness**
+```bash
+GET /readiness
+
+Response:
+{
+  "status": "ready",
+  "capabilities": {
+    "loop_engineering": {"status": "enabled"},
+    "memory": {"status": "enabled"},
+    "eval": {"status": "enabled"},
+    "open_source": {"status": "prepared"}
+  }
+}
+```
+
+### 7. **Eval Gate**
+```bash
+POST /eval
+Content-Type: application/json
+
+{
+  "k": 5,
+  "cases": [
+    {
+      "id": "deployment-risks",
+      "query": "What production deployment risks should I monitor?",
+      "answer_contains": ["deployment"],
+      "min_documents": 1,
+      "min_relevance": 0.2
+    }
+  ]
+}
+```
+
+See `EVALS.md` for release-check guidance.
 
 ## Example Queries
 
