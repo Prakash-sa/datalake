@@ -4,7 +4,10 @@ RAG Service - Application use cases and orchestration
 
 import logging
 import os
-from typing import List, Dict
+import json
+import urllib.error
+import urllib.request
+from typing import Any, List, Dict
 from datetime import datetime
 from pathlib import Path
 
@@ -101,6 +104,67 @@ class DocumentRAGService:
             logger.error(f"❌ Failed to initialize RAG components: {e}", exc_info=True)
             self.stats["errors"] += 1
             raise ConnectionError(f"Failed to initialize RAG components: {e}") from e
+
+    def _check_chroma_storage(self) -> Dict[str, Any]:
+        """Verify the vector storage path exists and is writable."""
+        try:
+            chroma_dir = Path(self.chroma_path)
+            chroma_dir.mkdir(parents=True, exist_ok=True)
+            probe = chroma_dir / ".readiness_check"
+            probe.write_text(datetime.now().isoformat(), encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return {
+                "status": "ready",
+                "provider": "chroma",
+                "persistent_path": str(chroma_dir),
+                "writable": True,
+            }
+        except Exception as e:
+            logger.warning(f"Chroma storage readiness failed: {e}")
+            return {
+                "status": "error",
+                "provider": "chroma",
+                "persistent_path": self.chroma_path,
+                "writable": False,
+                "error": str(e),
+            }
+
+    def _check_ollama(self) -> Dict[str, Any]:
+        """Check Ollama availability and required model presence."""
+        tags_url = f"{self.ollama_url.rstrip('/')}/api/tags"
+        required_models = [self.embedding_model, self.llm_model]
+
+        try:
+            request = urllib.request.Request(tags_url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=3) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+
+            models = payload.get("models", [])
+            installed = {
+                model.get("name") or model.get("model")
+                for model in models
+                if model.get("name") or model.get("model")
+            }
+            installed_aliases = installed | {model.split(":", 1)[0] for model in installed}
+            missing = [model for model in required_models if model not in installed_aliases]
+
+            return {
+                "status": "ready" if not missing else "degraded",
+                "url": self.ollama_url,
+                "required_models": required_models,
+                "installed_models": sorted(installed),
+                "missing_models": missing,
+            }
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+            logger.warning(f"Ollama readiness failed: {e}")
+            return {
+                "status": "error",
+                "url": self.ollama_url,
+                "required_models": required_models,
+                "installed_models": [],
+                "missing_models": required_models,
+                "error": str(e),
+            }
 
     def index_documents(self, documents: List[dict]) -> dict:
         """Index documents into the vector store."""
@@ -327,8 +391,12 @@ Answer:"""
     def get_readiness(self) -> dict:
         """Report production operating capabilities."""
         stats = self.get_stats()
+        memory = self._check_chroma_storage()
+        ollama = self._check_ollama()
+        status = "ready" if memory["status"] == "ready" and ollama["status"] == "ready" else "degraded"
+
         return {
-            "status": "ready",
+            "status": status,
             "capabilities": {
                 "loop_engineering": {
                     "status": "enabled",
@@ -340,11 +408,10 @@ Answer:"""
                     ],
                 },
                 "memory": {
-                    "status": "enabled",
-                    "provider": "chroma",
-                    "persistent_path": self.chroma_path,
+                    **memory,
                     "documents": stats["total_documents"],
                 },
+                "ollama": ollama,
                 "eval": {
                     "status": "enabled",
                     "endpoint": "/eval",

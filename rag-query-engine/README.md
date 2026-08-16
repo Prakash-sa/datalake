@@ -227,7 +227,8 @@ Response:
   "status": "ready",
   "capabilities": {
     "loop_engineering": {"status": "enabled"},
-    "memory": {"status": "enabled"},
+    "memory": {"status": "ready"},
+    "ollama": {"status": "ready", "missing_models": []},
     "eval": {"status": "enabled"},
     "open_source": {"status": "prepared"}
   }
