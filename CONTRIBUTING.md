@@ -16,6 +16,11 @@
    ```bash
    npm run electron:dev
    ```
+4. Build a local desktop package:
+   ```bash
+   python3 -m pip install pyinstaller
+   npm run dist
+   ```
 
 ## Quality Bar
 
@@ -30,4 +35,5 @@
 - `/readiness` reports loop engineering, memory, eval, and open-source capabilities.
 - Frontend TypeScript and lint checks pass.
 - Electron launches with `npm run electron:dev`.
+- Desktop packaging includes the PyInstaller sidecar in `rag-query-engine/backend/dist`.
 - New configuration is documented in README or `.env.production`.

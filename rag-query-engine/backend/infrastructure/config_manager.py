@@ -14,9 +14,10 @@ class ConfigManager:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
     # API Settings
-    HOST: str = os.getenv("HOST", "0.0.0.0")
+    HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = int(os.getenv("PORT", "8000"))
     WORKERS: int = int(os.getenv("WORKERS", "4"))
+    API_TOKEN: Optional[str] = os.getenv("RAG_API_TOKEN")
 
     # CORS Settings
     ALLOWED_ORIGINS: list = [

@@ -95,19 +95,29 @@ export default function DocumentRAGInterface() {
     setError(null);
 
     try {
-      const response = await fetch(`${apiUrl}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, k: 5, min_score: 0 }),
-      });
+      const body = { query, k: 5, min_score: 0 };
+      const desktopApi = window.desktop?.apiRequest;
+      const data = desktopApi
+        ? await desktopApi<QueryResult>({ path: '/query', method: 'POST', body })
+        : await fetch(`${apiUrl}/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }).then(async (response) => {
+            const payload = await response.json().catch(() => undefined);
+            return {
+              ok: response.ok,
+              status: response.status,
+              data: payload as QueryResult | undefined,
+              error: response.ok ? undefined : payload?.detail || 'Query failed',
+            };
+          });
 
-      if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || 'Query failed');
+      if (!data.ok || !data.data) {
+        throw new Error(data.error || 'Query failed');
       }
 
-      const data = (await response.json()) as QueryResult;
-      setResults(data);
+      setResults(data.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process query');
     } finally {

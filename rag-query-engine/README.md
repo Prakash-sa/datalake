@@ -147,7 +147,9 @@ cd frontend
 npm run dist
 ```
 
-By default Electron loads `http://localhost:3000`. Set `RAG_DESKTOP_URL` to point the desktop shell at a hosted Next.js deployment.
+In development, Electron loads `http://localhost:3000` and starts the FastAPI backend as a local sidecar. Set `RAG_START_BACKEND=false` if you want to run the backend yourself.
+
+Packaged builds use the static Next.js export from `frontend/out`, serve it through the `app://local` protocol, and proxy renderer API calls through the Electron main process. The backend is packaged with PyInstaller from `backend/rag-backend.spec` into `backend/dist` before `electron-builder` runs.
 
 ## API Endpoints
 

@@ -6,7 +6,7 @@ import logging
 import os
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -43,6 +43,20 @@ app.add_middleware(
     max_age=config.CORS_CACHE_MAX_AGE,
 )
 
+
+@app.middleware("http")
+async def require_api_token(request: Request, call_next):
+    """Require Electron-generated bearer token when configured."""
+    if not config.API_TOKEN:
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    if authorization != f"Bearer {config.API_TOKEN}":
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    return await call_next(request)
+
+
 # Initialize RAG service
 try:
     rag_service = DocumentRAGService(
@@ -60,3 +74,15 @@ except Exception as e:
 
 # Include API routes
 app.include_router(router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host=config.HOST,
+        port=config.PORT,
+        log_level=config.LOG_LEVEL.lower(),
+        workers=1,
+    )
