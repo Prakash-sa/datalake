@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class CatalogStore:
@@ -42,10 +42,18 @@ class CatalogStore:
             ).fetchone()["version"]
             if current < 1:
                 self._create_v1(conn)
-                conn.execute(
-                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-                    (SCHEMA_VERSION, datetime.utcnow().isoformat()),
-                )
+                self._record_migration(conn, 1)
+                current = 1
+            if current < 2:
+                self._create_v2(conn)
+                self._record_migration(conn, 2)
+
+    @staticmethod
+    def _record_migration(conn: sqlite3.Connection, version: int) -> None:
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+            (version, datetime.utcnow().isoformat()),
+        )
 
     @staticmethod
     def _create_v1(conn: sqlite3.Connection) -> None:
@@ -114,6 +122,27 @@ class CatalogStore:
                 key TEXT PRIMARY KEY,
                 value_json TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            """
+        )
+
+    @staticmethod
+    def _create_v2(conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS query_traces (
+                id TEXT PRIMARY KEY,
+                query_hash TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                retrieval_version TEXT NOT NULL,
+                embedding_model TEXT NOT NULL,
+                llm_model TEXT NOT NULL,
+                chunk_ids_json TEXT NOT NULL,
+                scores_json TEXT NOT NULL,
+                latency_json TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error_code TEXT,
+                created_at TEXT NOT NULL
             );
             """
         )
@@ -211,6 +240,36 @@ class CatalogStore:
             ).fetchall()
             return [row["id"] for row in rows]
 
+    def search_fts(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        terms = [term for term in query.replace('"', " ").split() if len(term) > 1]
+        if not terms:
+            return []
+        expression = " OR ".join(f'"{term}"' for term in terms[:8])
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id, c.document_id, c.chunk_index, c.content, c.metadata_json,
+                       bm25(chunks_fts) AS rank
+                FROM chunks_fts
+                JOIN chunks c ON c.id = chunks_fts.id
+                WHERE chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+                """,
+                (expression, limit),
+            ).fetchall()
+            return [
+                {
+                    "id": row["id"],
+                    "document_id": row["document_id"],
+                    "chunk_index": row["chunk_index"],
+                    "content": row["content"],
+                    "metadata": json.loads(row["metadata_json"]),
+                    "rank": float(row["rank"]),
+                }
+                for row in rows
+            ]
+
     def delete_document(self, document_id: str) -> bool:
         with self._connect() as conn:
             conn.execute("DELETE FROM chunks_fts WHERE document_id = ?", (document_id,))
@@ -229,6 +288,32 @@ class CatalogStore:
                     status,
                     json.dumps(request, sort_keys=True),
                     json.dumps(result, sort_keys=True),
+                    datetime.utcnow().isoformat(),
+                ),
+            )
+
+    def record_query_trace(self, trace: Dict[str, Any]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO query_traces (
+                    id, query_hash, prompt_version, retrieval_version, embedding_model, llm_model,
+                    chunk_ids_json, scores_json, latency_json, status, error_code, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trace["id"],
+                    trace["query_hash"],
+                    trace["prompt_version"],
+                    trace["retrieval_version"],
+                    trace["embedding_model"],
+                    trace["llm_model"],
+                    json.dumps(trace.get("chunk_ids", [])),
+                    json.dumps(trace.get("scores", [])),
+                    json.dumps(trace.get("latency", {}), sort_keys=True),
+                    trace["status"],
+                    trace.get("error_code"),
                     datetime.utcnow().isoformat(),
                 ),
             )

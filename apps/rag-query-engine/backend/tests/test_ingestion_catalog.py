@@ -40,3 +40,16 @@ def test_catalog_persists_documents_and_chunks(tmp_path: Path):
 
     assert store.delete_document(result["document"]["id"]) is True
     assert store.list_documents() == []
+
+
+def test_catalog_fts_search(tmp_path: Path):
+    store = CatalogStore(str(tmp_path / "app.db"))
+    source = tmp_path / "retrieval.txt"
+    source.write_text("Reciprocal rank fusion combines dense and lexical retrieval.", encoding="utf-8")
+    result = build_ingested_document(source, "embed-model", "llm-model")
+    store.upsert_document(result["document"], result["chunks"])
+
+    matches = store.search_fts("lexical retrieval", limit=5)
+
+    assert len(matches) == 1
+    assert matches[0]["id"] == result["chunks"][0]["id"]

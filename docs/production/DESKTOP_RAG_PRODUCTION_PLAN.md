@@ -265,6 +265,8 @@ Replace the single dense-vector query with:
 
 Do not add an LLM reranker to the default pipeline initially. It increases latency and memory consumption before the baseline retrieval quality is known.
 
+Implementation status: dense Chroma retrieval, SQLite FTS5 lexical retrieval, reciprocal-rank fusion, source-delimited prompts, and privacy-safe local query traces are implemented. Remaining release work includes streaming, cancellation, citation validation, richer retrieval metrics, and prompt-injection fixtures.
+
 Required answer behavior:
 
 - Stream generation tokens.
