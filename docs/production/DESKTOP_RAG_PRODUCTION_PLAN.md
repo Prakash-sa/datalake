@@ -601,6 +601,8 @@ Add or correct:
 - SHA-256 checksums and build provenance.
 - Dependency update automation.
 
+Implementation status: threat model, privacy policy, release/signing docs, ADR, Code of Conduct, issue templates, PR template, CodeQL/dependency-audit workflow, and SBOM workflow are present. Remaining work includes model-license manifest details, checksum publishing in release automation, dependency update automation, and DCO/CLA decision.
+
 Do not claim “production ready,” “private,” or “offline” until packaged binaries and clean-machine tests prove those properties.
 
 ## 17. Work Sequence

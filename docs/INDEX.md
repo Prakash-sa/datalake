@@ -44,6 +44,9 @@ Welcome to the Enterprise Document RAG Platform! This guide helps you navigate a
 | **DEPLOYMENT.md** | Setup for all environments | 15 min | DevOps/Operators |
 | **API_REFERENCE.md** | REST API endpoints | 10 min | Developers |
 | **TROUBLESHOOTING.md** | Common issues & solutions | 10 min | Ops/Support |
+| **PRIVACY.md** | Local data behavior and telemetry policy | 5 min | Users/maintainers |
+| **SECURITY_THREAT_MODEL.md** | Desktop app trust boundaries and risks | 10 min | Security/maintainers |
+| **RELEASE.md** | Release, signing, and packaging gates | 10 min | Maintainers |
 
 ### Specialized Documentation
 

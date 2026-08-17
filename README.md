@@ -210,6 +210,10 @@ datalake-project/
 │   ├── DEPLOYMENT.md                # Setup and configuration
 │   ├── API_REFERENCE.md             # API endpoints and examples
 │   ├── TROUBLESHOOTING.md           # Common issues and fixes
+│   ├── PRIVACY.md                   # Local data and telemetry policy
+│   ├── RELEASE.md                   # Release and signing process
+│   ├── SECURITY_THREAT_MODEL.md     # Desktop threat model
+│   ├── adr/                         # Architecture decisions
 │   ├── production/                  # Desktop and release production plans
 │   ├── guides/                      # Operational guides
 │   └── reports/                     # Historical completion reports
@@ -442,6 +446,13 @@ For issues, feature requests, or improvements:
 ## 📄 License
 
 MIT License - See LICENSE file for details
+
+## 🔐 Security and Privacy
+
+- [Security policy](SECURITY.md)
+- [Threat model](docs/SECURITY_THREAT_MODEL.md)
+- [Privacy policy](docs/PRIVACY.md)
+- [Release and signing process](docs/RELEASE.md)
 
 ## 📞 Support
 
