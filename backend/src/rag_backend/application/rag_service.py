@@ -18,17 +18,21 @@ from typing import Any
 
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 
+from rag_backend.application.citations import validate_citations
 from rag_backend.application.ingestion_service import build_ingested_document
 from rag_backend.application.prompts import (
+    DEFAULT_CONTEXT_TOKEN_BUDGET,
     GROUNDED_ANSWER_TEMPLATE,
     PROMPT_VERSION,
     build_context,
+    select_context_documents,
 )
 from rag_backend.application.retrieval import (
     RETRIEVAL_VERSION,
     candidate_pool_size,
     fuse_results,
 )
+from rag_backend.errors import classify_ollama_exception
 from rag_backend.infrastructure.catalog_store import CatalogStore
 from rag_backend.infrastructure.ollama_client import OllamaClient
 from rag_backend.infrastructure.vector_store import ChromaVectorStore, normalize_metadata
@@ -58,6 +62,7 @@ class DocumentRAGService:
         temperature: float = 0.3,
         chroma_path: str = "./chroma_db",
         app_db_path: str = "./app.db",
+        context_token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
     ) -> None:
         if not 0.0 <= temperature <= 1.0:
             raise ValueError("Temperature must be between 0.0 and 1.0")
@@ -68,6 +73,7 @@ class DocumentRAGService:
         self.temperature = temperature
         self.chroma_path = chroma_path
         self.app_db_path = app_db_path
+        self.context_token_budget = context_token_budget
 
         self.catalog = CatalogStore(app_db_path)
         self.ollama = OllamaClient(ollama_url, [embedding_model, llm_model])
@@ -312,7 +318,14 @@ class DocumentRAGService:
                     "processing_time_seconds": round(elapsed, 2),
                 }
 
-            context = build_context(relevant_docs)
+            # Only the documents that fit the budget are sent to the model, so
+            # citations must be validated against this list, not the full result.
+            context_docs = select_context_documents(
+                relevant_docs, token_budget=self.context_token_budget
+            )
+            context = build_context(context_docs)
+
+            degraded_code: str | None = None
             try:
                 answer = self.llm.invoke(
                     GROUNDED_ANSWER_TEMPLATE.format(context=context, query=user_query)
@@ -320,25 +333,42 @@ class DocumentRAGService:
             except Exception as llm_error:
                 # Degrade to context-only so retrieval stays usable without a
                 # loaded generation model.
-                logger.warning("LLM generation not available: %s", llm_error)
-                answer = f"Based on {len(relevant_docs)} relevant document(s):\n\n{context}"
+                degraded_code = str(classify_ollama_exception(llm_error))
+                logger.warning("Generation unavailable (%s): %s", degraded_code, llm_error)
+                answer = f"Based on {len(context_docs)} relevant document(s):\n\n{context}"
+
+            answer = answer.strip() if answer else "No answer generated"
+            citations = validate_citations(answer, context_docs)
+            if not citations["valid"]:
+                # The model cited a source it was never given. Surface it rather
+                # than rendering a citation that resolves to nothing.
+                logger.warning(
+                    "Answer cited %d source(s) outside the supplied range",
+                    len(citations["invalid_indices"]),
+                )
 
             elapsed = (datetime.now() - start_time).total_seconds()
             self.stats["queries_processed"] += 1
             self._record_query_trace(
                 user_query,
-                relevant_docs,
-                "success",
+                context_docs,
+                "degraded" if degraded_code else "success",
                 {"total_seconds": round(elapsed, 3)},
+                error_code=degraded_code,
+                citation_count=citations["citation_count"],
             )
 
             return {
-                "status": "success",
+                "status": "degraded" if degraded_code else "success",
                 "query": user_query,
-                "answer": answer.strip() if answer else "No answer generated",
-                "retrieved_documents": relevant_docs,
-                "document_count": len(relevant_docs),
+                "answer": answer,
+                "retrieved_documents": context_docs,
+                "document_count": len(context_docs),
                 "processing_time_seconds": round(elapsed, 2),
+                "citations": citations,
+                # Documents retrieved but dropped by the context budget.
+                "truncated_document_count": len(relevant_docs) - len(context_docs),
+                **({"code": degraded_code} if degraded_code else {}),
             }
         except ValueError as e:
             logger.warning("Query validation error: %s", e)
@@ -358,6 +388,7 @@ class DocumentRAGService:
         status: str,
         latency: dict[str, Any],
         error_code: str | None = None,
+        citation_count: int = 0,
     ) -> None:
         """Persist a privacy-safe trace: query is hashed, content never stored."""
         try:
@@ -372,7 +403,7 @@ class DocumentRAGService:
                     "llm_model": self.llm_model,
                     "chunk_ids": [doc.get("id") for doc in documents],
                     "scores": [doc.get("relevance_score") for doc in documents],
-                    "latency": latency,
+                    "latency": {**latency, "citation_count": citation_count},
                     "status": status,
                     "error_code": error_code,
                 }

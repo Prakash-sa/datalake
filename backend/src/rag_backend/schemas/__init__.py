@@ -11,6 +11,7 @@ from rag_backend.schemas.requests import (
     SettingsUpdateRequest,
 )
 from rag_backend.schemas.responses import (
+    CitationReport,
     DocumentCatalogResponse,
     EvalResponse,
     HealthResponse,
@@ -24,6 +25,7 @@ from rag_backend.schemas.responses import (
 )
 
 __all__ = [
+    "CitationReport",
     "DocumentCatalogResponse",
     "DocumentIndexRequest",
     "DocumentQueryRequest",

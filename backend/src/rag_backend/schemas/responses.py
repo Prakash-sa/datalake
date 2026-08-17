@@ -96,6 +96,18 @@ class SettingsResponse(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+class CitationReport(BaseModel):
+    """Validation of an answer's citations against the supplied sources."""
+
+    valid: bool
+    cited_indices: list[int] = []
+    cited_chunk_ids: list[str] = []
+    invalid_indices: list[int] = []
+    uncited_source_indices: list[int] = []
+    citation_count: int = 0
+    supplied_source_count: int = 0
+
+
 class QueryResponse(BaseModel):
     """RAG query response."""
 
@@ -105,6 +117,11 @@ class QueryResponse(BaseModel):
     retrieved_documents: list[DocumentResultItem]
     document_count: int
     processing_time_seconds: float
+    citations: CitationReport | None = None
+    # Documents retrieved but dropped to fit the context token budget.
+    truncated_document_count: int = 0
+    # Structured reason when the answer degraded to context-only.
+    code: str | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 

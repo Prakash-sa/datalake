@@ -1,6 +1,10 @@
 appId: com.datalake.ragqueryengine
 productName: RAG Query Engine
 asar: true
+
+# Disables RunAsNode, NODE_OPTIONS, and inspect arguments in the packaged
+# binary. Runs before signing so the flipped bits are covered by the signature.
+afterPack: ./scripts/apply-fuses.js
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
 files:
