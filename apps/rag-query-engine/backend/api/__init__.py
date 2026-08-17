@@ -3,6 +3,7 @@ API Layer - HTTP routes and controllers
 """
 
 from datetime import datetime
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 
 from application.rag_service import DocumentRAGService
@@ -249,10 +250,17 @@ async def run_eval(request: EvalRequest):
             }
         )
 
-    return {
+    response = {
         "status": "success",
         "passed": passed_cases == len(request.cases),
         "total_cases": len(request.cases),
         "passed_cases": passed_cases,
         "results": eval_results,
     }
+    rag_service.catalog.record_eval_run(
+        run_id=f"eval_{uuid4().hex}",
+        status="passed" if response["passed"] else "failed",
+        request=request.dict(),
+        result=response,
+    )
+    return response

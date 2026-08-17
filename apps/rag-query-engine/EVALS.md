@@ -28,3 +28,5 @@ Each case checks:
 - `min_relevance`: minimum top source relevance.
 
 Use this endpoint in CI or pre-release checks after indexing a known fixture corpus.
+
+Checked-in smoke fixtures live in `evals/fixture_corpus.json` and `evals/eval_cases.json`. The prompt-injection fixture must be treated as untrusted source text, not as instructions.
