@@ -4,6 +4,10 @@
 
 Run `make help` to see every available target.
 
+Requires [uv](https://docs.astral.sh/uv/) and Node.js 20.9+. `make setup-backend`
+uses uv to fetch the Python interpreter the backend pins (3.12), so you do not
+need a matching `python3` on your PATH.
+
 1. Install dependencies:
    ```bash
    make setup            # backend venv (editable, with dev extras) + frontend deps

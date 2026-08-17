@@ -35,8 +35,8 @@ Dependencies flow inward only: `api` → `application` → `domain`, with
 ## Development
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -e '.[dev]'
 
 pytest                    # tests
 ruff check src tests      # lint

@@ -139,13 +139,18 @@ class DocumentRAGService:
                         errors.append(f"Document {idx}: missing 'id' or 'content'")
                         continue
 
+                    # Embed before appending anything. These four lists are
+                    # positionally paired, so a failure mid-append would offset
+                    # embeddings against content and silently mis-index the
+                    # remaining documents.
+                    embedding = self.embeddings.embed_query(content)
                     metadata = normalize_metadata(doc.get("metadata", {}))
                     metadata["id"] = doc_id
 
                     ids.append(doc_id)
                     contents.append(content)
                     metadatas.append(metadata)
-                    embeddings.append(self.embeddings.embed_query(content))
+                    embeddings.append(embedding)
                 except Exception as e:
                     errors.append(f"Document {idx}: {e}")
                     logger.warning("Failed to index document %d: %s", idx, e)
