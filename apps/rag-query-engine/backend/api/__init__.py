@@ -10,10 +10,13 @@ from interfaces import (
     DocumentIndexRequest,
     DocumentSearchRequest,
     DocumentQueryRequest,
+    FileIngestRequest,
     EvalRequest,
     HealthResponse,
     StatsResponse,
     SearchResponse,
+    DocumentCatalogResponse,
+    IngestResponse,
     QueryResponse,
     ReadinessResponse,
     EvalResponse,
@@ -70,6 +73,43 @@ async def index_documents(request: DocumentIndexRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/documents/ingest", response_model=IngestResponse)
+async def ingest_files(request: FileIngestRequest):
+    """Ingest local files by path into the catalog and vector index."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    results = [
+        rag_service.ingest_file(path, force_reindex=request.force_reindex)
+        for path in request.paths
+    ]
+    status = "success" if all(result.get("status") in {"success", "duplicate"} for result in results) else "partial_success"
+    return {"status": status, "results": results}
+
+
+@router.get("/documents", response_model=DocumentCatalogResponse)
+async def list_documents():
+    """List indexed source documents."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    return {"status": "success", "documents": rag_service.list_documents()}
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document(document_id: str):
+    """Delete a source document and its indexed chunks."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    result = rag_service.delete_document(document_id)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Document not found")
+    return result
 
 
 @router.post("/documents/search", response_model=SearchResponse)

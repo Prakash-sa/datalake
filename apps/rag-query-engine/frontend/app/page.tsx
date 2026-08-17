@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Upload,
 } from 'lucide-react';
 
 type RetrievedDocument = {
@@ -29,6 +30,23 @@ type QueryResult = {
   document_count?: number;
   processing_time_seconds?: number;
   error?: string;
+};
+
+type ApiResult<T> = {
+  ok: boolean;
+  status: number;
+  data?: T;
+  error?: string;
+};
+
+type IngestResult = {
+  status: string;
+  results: Array<{
+    status: string;
+    document?: { id: string; title?: string; source_path?: string };
+    chunks_indexed?: number;
+    error?: string;
+  }>;
 };
 
 type Capability = {
@@ -75,7 +93,9 @@ export default function DocumentRAGInterface() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
 
   const apiUrl = useMemo(
@@ -87,6 +107,26 @@ export default function DocumentRAGInterface() {
     setIsDesktop(Boolean(window.desktop?.isElectron));
   }, []);
 
+  const apiRequest = async <T,>(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', body?: unknown): Promise<ApiResult<T>> => {
+    const desktopApi = window.desktop?.apiRequest;
+    if (desktopApi) {
+      return desktopApi<T>({ path, method, body });
+    }
+
+    const response = await fetch(`${apiUrl}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => undefined);
+    return {
+      ok: response.ok,
+      status: response.status,
+      data: payload as T | undefined,
+      error: response.ok ? undefined : payload?.detail || 'Request failed',
+    };
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!query.trim()) return;
@@ -96,22 +136,7 @@ export default function DocumentRAGInterface() {
 
     try {
       const body = { query, k: 5, min_score: 0 };
-      const desktopApi = window.desktop?.apiRequest;
-      const data = desktopApi
-        ? await desktopApi<QueryResult>({ path: '/query', method: 'POST', body })
-        : await fetch(`${apiUrl}/query`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          }).then(async (response) => {
-            const payload = await response.json().catch(() => undefined);
-            return {
-              ok: response.ok,
-              status: response.status,
-              data: payload as QueryResult | undefined,
-              error: response.ok ? undefined : payload?.detail || 'Query failed',
-            };
-          });
+      const data = await apiRequest<QueryResult>('/query', 'POST', body);
 
       if (!data.ok || !data.data) {
         throw new Error(data.error || 'Query failed');
@@ -122,6 +147,36 @@ export default function DocumentRAGInterface() {
       setError(err instanceof Error ? err.message : 'Failed to process query');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleImport = async () => {
+    const selectDocuments = window.desktop?.selectDocuments;
+    if (!selectDocuments) return;
+
+    setImporting(true);
+    setError(null);
+    setImportStatus(null);
+
+    try {
+      const paths = await selectDocuments();
+      if (!paths.length) return;
+
+      const response = await apiRequest<IngestResult>('/documents/ingest', 'POST', {
+        paths,
+        force_reindex: false,
+      });
+      if (!response.ok || !response.data) {
+        throw new Error(response.error || 'Import failed');
+      }
+
+      const indexed = response.data.results.reduce((count, item) => count + (item.chunks_indexed ?? 0), 0);
+      const failures = response.data.results.filter((item) => item.status === 'error').length;
+      setImportStatus(`${paths.length - failures}/${paths.length} files processed, ${indexed} chunks indexed`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import documents');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -144,6 +199,17 @@ export default function DocumentRAGInterface() {
                 Query indexed documents, inspect source grounding, and validate the operating loop before shipping.
               </p>
             </div>
+            {isDesktop && (
+              <button
+                type="button"
+                onClick={handleImport}
+                disabled={importing}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-500"
+              >
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Import
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:min-w-[520px]">
               {capabilities.map((item) => (
                 <div key={item.name} className="rounded-md border border-zinc-800 bg-zinc-900 p-3">
@@ -199,6 +265,13 @@ export default function DocumentRAGInterface() {
             <div className="flex gap-3 rounded-md border border-red-800 bg-red-950/70 p-4">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
               <p className="text-sm text-red-100">{error}</p>
+            </div>
+          )}
+
+          {importStatus && (
+            <div className="flex gap-3 rounded-md border border-emerald-800 bg-emerald-950/50 p-4">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-300" />
+              <p className="text-sm text-emerald-100">{importStatus}</p>
             </div>
           )}
 

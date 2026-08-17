@@ -32,6 +32,8 @@ class ConfigManager:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "mistral")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     CHROMA_PATH: str = os.getenv("CHROMA_PATH", "./chroma_db")
+    APP_DATA_DIR: str = os.getenv("APP_DATA_DIR", ".")
+    APP_DB_PATH: str = os.getenv("APP_DB_PATH", os.path.join(APP_DATA_DIR, "app.db"))
 
     # Resource Limits
     MAX_DOCUMENTS: int = int(os.getenv("MAX_DOCUMENTS", "10000"))

@@ -38,7 +38,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
     max_age=config.CORS_CACHE_MAX_AGE,
 )
@@ -65,6 +65,7 @@ try:
         llm_model=config.LLM_MODEL,
         temperature=config.LLM_TEMPERATURE,
         chroma_path=config.CHROMA_PATH,
+        app_db_path=config.APP_DB_PATH,
     )
     initialize_rag_service(rag_service)
     logger.info("✅ RAG service initialized successfully")

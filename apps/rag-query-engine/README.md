@@ -253,6 +253,24 @@ Content-Type: application/json
 
 See `EVALS.md` for release-check guidance.
 
+### 8. **Local File Ingestion**
+```bash
+POST /documents/ingest
+Content-Type: application/json
+
+{
+  "paths": ["/absolute/path/to/manual.pdf"],
+  "force_reindex": false
+}
+```
+
+Supported first-release formats are TXT, Markdown, HTML, DOCX, and PDF. The backend validates files, hashes source content, chunks text with versioned metadata, persists catalog state in SQLite, and indexes chunks in Chroma.
+
+```bash
+GET /documents
+DELETE /documents/{document_id}
+```
+
 ## Example Queries
 
 Try these natural language queries:

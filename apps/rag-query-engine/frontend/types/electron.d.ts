@@ -7,7 +7,7 @@ declare global {
       isElectron: boolean;
       apiRequest: <T = unknown>(request: {
         path: string;
-        method?: 'GET' | 'POST';
+        method?: 'GET' | 'POST' | 'DELETE';
         body?: unknown;
       }) => Promise<{
         ok: boolean;
@@ -15,6 +15,7 @@ declare global {
         data?: T;
         error?: string;
       }>;
+      selectDocuments: () => Promise<string[]>;
     };
   }
 }

@@ -41,11 +41,11 @@ Other P0 blockers include:
 - Desktop data uses a relative `./chroma_db` path.
 - No authentication exists between Electron and the backend.
 - Ollama availability and required models are not checked.
-- No document picker, parser, chunker, deletion, or reindex workflow exists.
-- Retrieved content is truncated to 500 characters before answer generation.
+- Document picker, parser, chunker, deletion, and reindex primitives now exist; remaining work is richer progress UI, cancellation, and parser coverage hardening.
+- Retrieved chunk content is no longer truncated before answer generation.
 - Search errors become empty results, making outages look like “no documents found.”
 - The timeout argument is unused.
-- Readiness does not actually test Ollama, required models, or database writability.
+- Readiness now tests Ollama model availability and local storage writability.
 - Python dependencies use broad `>=` constraints and are not reproducible.
 - Tests are commented out in [requirements.txt](</Users/prakashsaini/Documents/Projects/Data Engineer/datalake-project/apps/rag-query-engine/backend/requirements.txt:27>).
 - Current evals only check string presence, document count, and maximum similarity.

@@ -21,6 +21,7 @@ class StatsResponse(BaseModel):
     queries_processed: int
     errors: int
     total_documents: int
+    catalog_documents: int
     timestamp: str
 
 
@@ -38,6 +39,40 @@ class SearchResponse(BaseModel):
 
     status: str
     results: List[DocumentResultItem]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class DocumentCatalogItem(BaseModel):
+    """Indexed source document catalog item."""
+
+    id: str
+    source_path: str
+    title: str
+    source_hash: str
+    content_type: str
+    parser_version: str
+    chunker_version: str
+    embedding_model: str
+    llm_model: str
+    indexed_at: str
+    updated_at: str
+    metadata: Dict[str, Any] = {}
+    chunk_count: int = 0
+
+
+class DocumentCatalogResponse(BaseModel):
+    """Catalog listing response."""
+
+    status: str
+    documents: List[DocumentCatalogItem]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class IngestResponse(BaseModel):
+    """File ingestion response."""
+
+    status: str
+    results: List[Dict[str, Any]]
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 

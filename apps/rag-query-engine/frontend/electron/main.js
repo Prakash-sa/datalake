@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, shell, session } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol, shell, session } = require('electron');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -148,6 +148,7 @@ async function startBackend() {
   const port = await findAvailablePort();
   backendBaseUrl = `http://127.0.0.1:${port}`;
   backendToken = crypto.randomBytes(32).toString('hex');
+  const userDataPath = app.getPath('userData');
 
   const backend = getBackendCommand();
   backendProcess = spawn(backend.command, backend.args, {
@@ -159,7 +160,9 @@ async function startBackend() {
       PORT: String(port),
       WORKERS: '1',
       RAG_API_TOKEN: backendToken,
-      CHROMA_PATH: path.join(app.getPath('userData'), 'vector', 'chroma'),
+      APP_DATA_DIR: userDataPath,
+      APP_DB_PATH: path.join(userDataPath, 'app.db'),
+      CHROMA_PATH: path.join(userDataPath, 'vector', 'chroma'),
       ALLOWED_ORIGINS: `${APP_PROTOCOL}://local,http://localhost:3000`,
       PYTHONUNBUFFERED: '1',
     },
@@ -198,7 +201,7 @@ function registerApiProxy() {
     const method = request?.method || 'GET';
     const requestPath = request?.path;
 
-    if (!['GET', 'POST'].includes(method) || typeof requestPath !== 'string' || !requestPath.startsWith('/')) {
+    if (!['GET', 'POST', 'DELETE'].includes(method) || typeof requestPath !== 'string' || !requestPath.startsWith('/')) {
       return { ok: false, status: 400, error: 'Invalid API request' };
     }
 
@@ -225,6 +228,17 @@ function registerApiProxy() {
       data,
       error: response.ok ? undefined : data?.detail || text || 'API request failed',
     };
+  });
+
+  ipcMain.handle('files:selectDocuments', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Documents', extensions: ['pdf', 'docx', 'txt', 'md', 'markdown', 'html', 'htm'] },
+      ],
+    });
+
+    return result.canceled ? [] : result.filePaths;
   });
 }
 

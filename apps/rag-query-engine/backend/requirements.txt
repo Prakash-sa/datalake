@@ -18,15 +18,19 @@ httpx>=0.25.2
 minio>=7.2.0
 chromadb>=0.4.0
 
+# Local document parsing
+PyMuPDF>=1.24.0
+python-docx>=1.1.0
+
 # Production Server
 gunicorn>=21.2.0
 
 # Monitoring & Logging
 prometheus-client>=0.19.0
 
-# Development/Testing (optional, can be in separate dev requirements)
-# pytest==7.4.3
-# pytest-asyncio==0.21.1
+# Development/Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
 # black==23.12.1
 # isort==5.13.2
 # ruff==0.1.8

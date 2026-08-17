@@ -44,6 +44,13 @@ class DocumentQueryRequest(BaseModel):
     )
 
 
+class FileIngestRequest(BaseModel):
+    """Request model for ingesting local files."""
+
+    paths: List[str] = Field(..., min_items=1, max_items=100)
+    force_reindex: bool = Field(False, description="Re-parse and re-index duplicate files")
+
+
 class EvalCase(BaseModel):
     """Single deterministic eval case for retrieval and answer grounding."""
 

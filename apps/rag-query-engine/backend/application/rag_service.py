@@ -16,6 +16,8 @@ from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
 from domain.models import SearchResult
+from application.ingestion_service import build_ingested_document
+from infrastructure.catalog_store import CatalogStore
 
 # Configure logging
 logging.basicConfig(
@@ -43,6 +45,7 @@ class DocumentRAGService:
         llm_model: str = "mistral",
         temperature: float = 0.3,
         chroma_path: str = "./chroma_db",
+        app_db_path: str = "./app.db",
     ):
         """Initialize RAG service with Chroma vector database."""
         if not 0.0 <= temperature <= 1.0:
@@ -53,10 +56,12 @@ class DocumentRAGService:
         self.llm_model = llm_model
         self.temperature = temperature
         self.chroma_path = chroma_path
+        self.app_db_path = app_db_path
         self.embeddings = None
         self.llm = None
         self.chroma_client = None
         self.chroma_collection = None
+        self.catalog = CatalogStore(app_db_path)
         self.documents_store: Dict[str, Dict] = {}
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
         self._initialize_components()
@@ -229,6 +234,67 @@ class DocumentRAGService:
             self.stats["errors"] += 1
             return {"status": "error", "error": str(e)}
 
+    def ingest_file(self, file_path: str, force_reindex: bool = False) -> dict:
+        """Parse, chunk, persist, and index a local file."""
+        try:
+            path = Path(file_path).expanduser().resolve()
+            ingested = build_ingested_document(path, self.embedding_model, self.llm_model)
+            document = ingested["document"]
+            chunks = ingested["chunks"]
+
+            existing = self.catalog.get_document_by_hash(document["source_hash"])
+            if existing and not force_reindex:
+                return {
+                    "status": "duplicate",
+                    "document": existing,
+                    "chunks_indexed": existing.get("chunk_count", 0),
+                }
+
+            index_payload = [
+                {
+                    "id": chunk["id"],
+                    "content": chunk["content"],
+                    "metadata": chunk["metadata"],
+                }
+                for chunk in chunks
+            ]
+            index_result = self.index_documents(index_payload)
+            if index_result.get("status") == "error":
+                return index_result
+
+            self.catalog.upsert_document(document, chunks)
+            return {
+                "status": "success",
+                "document": document,
+                "chunks_indexed": len(chunks),
+                "index_result": index_result,
+            }
+        except Exception as e:
+            logger.error(f"❌ File ingestion failed: {e}", exc_info=True)
+            self.stats["errors"] += 1
+            return {"status": "error", "error": str(e)}
+
+    def list_documents(self) -> List[dict]:
+        """List indexed source documents from the local catalog."""
+        return self.catalog.list_documents()
+
+    def delete_document(self, document_id: str) -> dict:
+        """Delete catalog rows and vector chunks for a source document."""
+        try:
+            chunk_ids = self.catalog.get_chunk_ids(document_id)
+            if chunk_ids and self.chroma_collection:
+                self.chroma_collection.delete(ids=chunk_ids)
+            deleted = self.catalog.delete_document(document_id)
+            return {
+                "status": "success" if deleted else "not_found",
+                "document_id": document_id,
+                "chunks_deleted": len(chunk_ids),
+            }
+        except Exception as e:
+            logger.error(f"❌ Document delete failed: {e}", exc_info=True)
+            self.stats["errors"] += 1
+            return {"status": "error", "error": str(e)}
+
     def search_documents(
         self, query: str, k: int = 5, min_score: float = None
     ) -> List[dict]:
@@ -276,7 +342,7 @@ class DocumentRAGService:
                     documents.append(
                         {
                             "id": metadata.get("id", "doc"),
-                            "content": doc_text[:500],
+                            "content": doc_text,
                             "metadata": metadata,
                             "relevance_score": round(float(similarity), 3),
                         }
@@ -385,6 +451,7 @@ Answer:"""
         return {
             **self.stats,
             "total_documents": total_documents,
+            "catalog_documents": len(self.catalog.list_documents()),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -410,6 +477,8 @@ Answer:"""
                 "memory": {
                     **memory,
                     "documents": stats["total_documents"],
+                    "catalog_documents": stats["catalog_documents"],
+                    "catalog_path": self.app_db_path,
                 },
                 "ollama": ollama,
                 "eval": {
