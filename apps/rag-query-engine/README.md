@@ -219,6 +219,7 @@ GET /health
 ### 6. **Production Readiness**
 ```bash
 GET /readiness
+GET /diagnostics
 
 Response:
 {

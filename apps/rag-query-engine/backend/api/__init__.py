@@ -67,6 +67,15 @@ async def get_readiness():
     return rag_service.get_readiness()
 
 
+@router.get("/diagnostics")
+async def get_diagnostics():
+    """Return local diagnostics for support and release smoke tests."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    return rag_service.get_diagnostics()
+
+
 @router.get("/models", response_model=ModelListResponse)
 async def list_models():
     """List installed and required Ollama models."""

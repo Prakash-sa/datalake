@@ -6,6 +6,9 @@ import logging
 import os
 import json
 import hashlib
+import platform
+import shutil
+import sys
 import urllib.error
 import urllib.request
 from typing import Any, List, Dict
@@ -235,6 +238,35 @@ class DocumentRAGService:
             "status": "success",
             "settings": current,
             "restart_required": True,
+        }
+
+    def get_diagnostics(self) -> dict:
+        """Return local diagnostics without document text or prompts."""
+        data_dir = Path(self.app_db_path).parent
+        usage = shutil.disk_usage(data_dir)
+        return {
+            "status": "success",
+            "runtime": {
+                "python_version": sys.version.split()[0],
+                "platform": platform.platform(),
+            },
+            "paths": {
+                "app_data_dir": str(data_dir),
+                "app_db_path": self.app_db_path,
+                "chroma_path": self.chroma_path,
+            },
+            "disk": {
+                "total_bytes": usage.total,
+                "used_bytes": usage.used,
+                "free_bytes": usage.free,
+            },
+            "models": {
+                "ollama_url": self.ollama_url,
+                "embedding_model": self.embedding_model,
+                "llm_model": self.llm_model,
+            },
+            "storage": self._check_chroma_storage(),
+            "stats": self.get_stats(),
         }
 
     def index_documents(self, documents: List[dict]) -> dict:
