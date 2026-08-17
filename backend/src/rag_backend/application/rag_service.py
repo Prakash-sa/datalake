@@ -1,0 +1,455 @@
+"""RAG service - orchestrates ingestion, retrieval, and answer generation.
+
+This is a facade over the infrastructure adapters. It owns the shared runtime
+state (models, vector store, catalog, counters) and delegates the mechanics of
+talking to Chroma and Ollama to :mod:`rag_backend.infrastructure`.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import platform
+import shutil
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from langchain_ollama import OllamaEmbeddings, OllamaLLM
+
+from rag_backend.application.ingestion_service import build_ingested_document
+from rag_backend.application.prompts import (
+    GROUNDED_ANSWER_TEMPLATE,
+    PROMPT_VERSION,
+    build_context,
+)
+from rag_backend.application.retrieval import (
+    RETRIEVAL_VERSION,
+    candidate_pool_size,
+    fuse_results,
+)
+from rag_backend.infrastructure.catalog_store import CatalogStore
+from rag_backend.infrastructure.ollama_client import OllamaClient
+from rag_backend.infrastructure.vector_store import ChromaVectorStore, normalize_metadata
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_MODEL_PROFILES = {
+    "light": {"llm_model": "qwen3:1.7b", "embedding_model": "qwen3-embedding:0.6b"},
+    "balanced": {"llm_model": "qwen3:4b", "embedding_model": "qwen3-embedding:0.6b"},
+}
+
+
+class DocumentRAGService:
+    """Application service for indexing, searching, and querying documents."""
+
+    MAX_QUERY_LENGTH = 1000
+    MIN_SIMILARITY_SCORE = 0.0
+    DEFAULT_MODEL_PROFILES = DEFAULT_MODEL_PROFILES
+    PROMPT_VERSION = PROMPT_VERSION
+    RETRIEVAL_VERSION = RETRIEVAL_VERSION
+
+    def __init__(
+        self,
+        ollama_url: str = "http://localhost:11434",
+        embedding_model: str = "nomic-embed-text",
+        llm_model: str = "mistral",
+        temperature: float = 0.3,
+        chroma_path: str = "./chroma_db",
+        app_db_path: str = "./app.db",
+    ) -> None:
+        if not 0.0 <= temperature <= 1.0:
+            raise ValueError("Temperature must be between 0.0 and 1.0")
+
+        self.ollama_url = ollama_url
+        self.embedding_model = embedding_model
+        self.llm_model = llm_model
+        self.temperature = temperature
+        self.chroma_path = chroma_path
+        self.app_db_path = app_db_path
+
+        self.catalog = CatalogStore(app_db_path)
+        self.ollama = OllamaClient(ollama_url, [embedding_model, llm_model])
+        self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
+
+        try:
+            self.embeddings = OllamaEmbeddings(model=embedding_model, base_url=ollama_url)
+            self.llm = OllamaLLM(model=llm_model, base_url=ollama_url, temperature=temperature)
+            self.vector_store = ChromaVectorStore(chroma_path)
+        except Exception as e:
+            logger.error("Failed to initialize RAG components: %s", e, exc_info=True)
+            self.stats["errors"] += 1
+            raise ConnectionError(f"Failed to initialize RAG components: {e}") from e
+
+        logger.info("RAG service ready (embedding=%s, llm=%s)", embedding_model, llm_model)
+
+    # -- Models ---------------------------------------------------------------
+
+    def list_ollama_models(self) -> dict[str, Any]:
+        """List installed and required Ollama models."""
+        return self.ollama.list_models()
+
+    def pull_ollama_model(self, name: str) -> dict[str, Any]:
+        """Pull a local Ollama model."""
+        return self.ollama.pull_model(name)
+
+    # -- Settings -------------------------------------------------------------
+
+    def get_settings(self) -> dict[str, Any]:
+        """Return persisted runtime settings layered over the active defaults."""
+        stored = self.catalog.get_setting("runtime", {})
+        return {
+            "ollama_url": stored.get("ollama_url", self.ollama_url),
+            "embedding_model": stored.get("embedding_model", self.embedding_model),
+            "llm_model": stored.get("llm_model", self.llm_model),
+            "temperature": stored.get("temperature", self.temperature),
+            "model_profiles": DEFAULT_MODEL_PROFILES,
+        }
+
+    def update_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        """Persist runtime settings. Model changes apply on next backend restart."""
+        current = self.get_settings()
+        for key in ("ollama_url", "embedding_model", "llm_model", "temperature"):
+            if settings.get(key) is not None:
+                current[key] = settings[key]
+        self.catalog.set_setting("runtime", current)
+        return {"status": "success", "settings": current, "restart_required": True}
+
+    # -- Indexing -------------------------------------------------------------
+
+    def index_documents(self, documents: list[dict[str, Any]]) -> dict[str, Any]:
+        """Embed and upsert documents into the vector store."""
+        if not documents:
+            return {"status": "success", "documents_indexed": 0}
+
+        try:
+            logger.info("Indexing %d documents", len(documents))
+            errors: list[str] = []
+            ids: list[str] = []
+            contents: list[str] = []
+            metadatas: list[dict[str, Any]] = []
+            embeddings: list[list[float]] = []
+
+            for idx, doc in enumerate(documents):
+                try:
+                    doc_id = doc.get("id", "")
+                    content = doc.get("content", "")
+                    if not doc_id or not content:
+                        errors.append(f"Document {idx}: missing 'id' or 'content'")
+                        continue
+
+                    metadata = normalize_metadata(doc.get("metadata", {}))
+                    metadata["id"] = doc_id
+
+                    ids.append(doc_id)
+                    contents.append(content)
+                    metadatas.append(metadata)
+                    embeddings.append(self.embeddings.embed_query(content))
+                except Exception as e:
+                    errors.append(f"Document {idx}: {e}")
+                    logger.warning("Failed to index document %d: %s", idx, e)
+
+            self.vector_store.upsert(ids, contents, metadatas, embeddings)
+            self.stats["documents_indexed"] += len(ids)
+
+            return {
+                "status": "partial_success" if errors else "success",
+                "documents_indexed": len(ids),
+                "errors": errors or None,
+            }
+        except Exception as e:
+            logger.error("Document indexing failed: %s", e, exc_info=True)
+            self.stats["errors"] += 1
+            return {"status": "error", "error": str(e)}
+
+    def ingest_file(self, file_path: str, force_reindex: bool = False) -> dict[str, Any]:
+        """Parse, chunk, persist, and index a local file."""
+        try:
+            path = Path(file_path).expanduser().resolve()
+            ingested = build_ingested_document(path, self.embedding_model, self.llm_model)
+            document = ingested["document"]
+            chunks = ingested["chunks"]
+
+            existing = self.catalog.get_document_by_hash(document["source_hash"])
+            if existing and not force_reindex:
+                return {
+                    "status": "duplicate",
+                    "document": existing,
+                    "chunks_indexed": existing.get("chunk_count", 0),
+                }
+
+            index_result = self.index_documents(
+                [
+                    {
+                        "id": chunk["id"],
+                        "content": chunk["content"],
+                        "metadata": chunk["metadata"],
+                    }
+                    for chunk in chunks
+                ]
+            )
+            if index_result.get("status") == "error":
+                return index_result
+
+            self.catalog.upsert_document(document, chunks)
+            return {
+                "status": "success",
+                "document": document,
+                "chunks_indexed": len(chunks),
+                "index_result": index_result,
+            }
+        except Exception as e:
+            logger.error("File ingestion failed: %s", e, exc_info=True)
+            self.stats["errors"] += 1
+            return {"status": "error", "error": str(e)}
+
+    def list_documents(self) -> list[dict[str, Any]]:
+        """List indexed source documents from the local catalog."""
+        return self.catalog.list_documents()
+
+    def delete_document(self, document_id: str) -> dict[str, Any]:
+        """Delete catalog rows and vector chunks for a source document."""
+        try:
+            chunk_ids = self.catalog.get_chunk_ids(document_id)
+            self.vector_store.delete(chunk_ids)
+            deleted = self.catalog.delete_document(document_id)
+            return {
+                "status": "success" if deleted else "not_found",
+                "document_id": document_id,
+                "chunks_deleted": len(chunk_ids),
+            }
+        except Exception as e:
+            logger.error("Document delete failed: %s", e, exc_info=True)
+            self.stats["errors"] += 1
+            return {"status": "error", "error": str(e)}
+
+    # -- Retrieval ------------------------------------------------------------
+
+    def search_documents(
+        self, query: str, k: int = 5, min_score: float | None = None
+    ) -> list[dict[str, Any]]:
+        """Search using dense vectors fused with SQLite FTS via RRF."""
+        try:
+            if not query or len(query) > self.MAX_QUERY_LENGTH:
+                raise ValueError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
+            if not 1 <= k <= 100:
+                raise ValueError("k must be between 1 and 100")
+
+            if min_score is None:
+                min_score = self.MIN_SIMILARITY_SCORE
+            if not 0.0 <= min_score <= 1.0:
+                raise ValueError("min_score must be between 0.0 and 1.0")
+
+            collection_count = self.vector_store.count()
+            if collection_count == 0:
+                logger.debug("No documents in the vector store")
+                return []
+
+            candidates = candidate_pool_size(k, collection_count)
+            matches = self.vector_store.query(
+                self.embeddings.embed_query(query), n_results=candidates
+            )
+
+            dense_ranked = [
+                {
+                    "id": match["id"],
+                    "content": match["content"],
+                    "metadata": match["metadata"],
+                    "relevance_score": round(float(match["similarity"]), 3),
+                    "retrieval_source": "dense",
+                }
+                for match in matches
+                if match["similarity"] >= min_score
+            ]
+
+            lexical_ranked = [
+                {
+                    "id": item["id"],
+                    "content": item["content"],
+                    "metadata": item["metadata"],
+                    "relevance_score": 0.0,
+                    "retrieval_source": "fts",
+                }
+                for item in self.catalog.search_fts(query, limit=candidates)
+            ]
+
+            return fuse_results(dense_ranked, lexical_ranked)[:k]
+        except ValueError as e:
+            logger.warning("Search validation error: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Document search failed: %s", e, exc_info=True)
+            return []
+
+    def query_documents(
+        self, user_query: str, k: int = 5, min_score: float | None = None
+    ) -> dict[str, Any]:
+        """Execute the RAG pipeline: retrieve context, then generate an answer."""
+        try:
+            if not user_query or len(user_query) > self.MAX_QUERY_LENGTH:
+                raise ValueError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
+
+            start_time = datetime.now()
+            relevant_docs = self.search_documents(user_query, k=k, min_score=min_score)
+
+            if not relevant_docs:
+                elapsed = (datetime.now() - start_time).total_seconds()
+                self._record_query_trace(
+                    user_query, [], "no_results", {"total_seconds": round(elapsed, 3)}
+                )
+                return {
+                    "status": "no_results",
+                    "query": user_query,
+                    "answer": "No relevant documents found in the knowledge base.",
+                    "retrieved_documents": [],
+                    "document_count": 0,
+                    "processing_time_seconds": round(elapsed, 2),
+                }
+
+            context = build_context(relevant_docs)
+            try:
+                answer = self.llm.invoke(
+                    GROUNDED_ANSWER_TEMPLATE.format(context=context, query=user_query)
+                )
+            except Exception as llm_error:
+                # Degrade to context-only so retrieval stays usable without a
+                # loaded generation model.
+                logger.warning("LLM generation not available: %s", llm_error)
+                answer = f"Based on {len(relevant_docs)} relevant document(s):\n\n{context}"
+
+            elapsed = (datetime.now() - start_time).total_seconds()
+            self.stats["queries_processed"] += 1
+            self._record_query_trace(
+                user_query,
+                relevant_docs,
+                "success",
+                {"total_seconds": round(elapsed, 3)},
+            )
+
+            return {
+                "status": "success",
+                "query": user_query,
+                "answer": answer.strip() if answer else "No answer generated",
+                "retrieved_documents": relevant_docs,
+                "document_count": len(relevant_docs),
+                "processing_time_seconds": round(elapsed, 2),
+            }
+        except ValueError as e:
+            logger.warning("Query validation error: %s", e)
+            self.stats["errors"] += 1
+            self._record_query_trace(user_query, [], "error", {}, error_code="validation")
+            raise
+        except Exception as e:
+            logger.error("Document query failed: %s", e, exc_info=True)
+            self.stats["errors"] += 1
+            self._record_query_trace(user_query, [], "error", {}, error_code="query_failed")
+            return {"status": "error", "query": user_query, "error": str(e)}
+
+    def _record_query_trace(
+        self,
+        query: str,
+        documents: list[dict[str, Any]],
+        status: str,
+        latency: dict[str, Any],
+        error_code: str | None = None,
+    ) -> None:
+        """Persist a privacy-safe trace: query is hashed, content never stored."""
+        try:
+            now = datetime.now(UTC)
+            self.catalog.record_query_trace(
+                {
+                    "id": f"query_{now.strftime('%Y%m%d%H%M%S%f')}",
+                    "query_hash": hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                    "prompt_version": PROMPT_VERSION,
+                    "retrieval_version": RETRIEVAL_VERSION,
+                    "embedding_model": self.embedding_model,
+                    "llm_model": self.llm_model,
+                    "chunk_ids": [doc.get("id") for doc in documents],
+                    "scores": [doc.get("relevance_score") for doc in documents],
+                    "latency": latency,
+                    "status": status,
+                    "error_code": error_code,
+                }
+            )
+        except Exception as e:
+            logger.debug("Query trace persistence failed: %s", e)
+
+    # -- Observability --------------------------------------------------------
+
+    def get_stats(self) -> dict[str, Any]:
+        """Engine counters plus current index sizes."""
+        return {
+            **self.stats,
+            "total_documents": self.vector_store.count(),
+            "catalog_documents": len(self.catalog.list_documents()),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def get_diagnostics(self) -> dict[str, Any]:
+        """Local diagnostics for support, excluding document text and prompts."""
+        data_dir = Path(self.app_db_path).parent
+        usage = shutil.disk_usage(data_dir)
+        return {
+            "status": "success",
+            "runtime": {
+                "python_version": sys.version.split()[0],
+                "platform": platform.platform(),
+            },
+            "paths": {
+                "app_data_dir": str(data_dir),
+                "app_db_path": self.app_db_path,
+                "chroma_path": self.chroma_path,
+            },
+            "disk": {
+                "total_bytes": usage.total,
+                "used_bytes": usage.used,
+                "free_bytes": usage.free,
+            },
+            "models": {
+                "ollama_url": self.ollama_url,
+                "embedding_model": self.embedding_model,
+                "llm_model": self.llm_model,
+            },
+            "storage": self.vector_store.check_storage(),
+            "stats": self.get_stats(),
+        }
+
+    def get_readiness(self) -> dict[str, Any]:
+        """Report production operating capabilities."""
+        stats = self.get_stats()
+        memory = self.vector_store.check_storage()
+        ollama = self.ollama.check_health()
+        ready = memory["status"] == "ready" and ollama["status"] == "ready"
+
+        return {
+            "status": "ready" if ready else "degraded",
+            "capabilities": {
+                "loop_engineering": {
+                    "status": "enabled",
+                    "signals": [
+                        "queries_processed",
+                        "errors",
+                        "processing_time_seconds",
+                        "retrieved_documents",
+                    ],
+                },
+                "memory": {
+                    **memory,
+                    "documents": stats["total_documents"],
+                    "catalog_documents": stats["catalog_documents"],
+                    "catalog_path": self.app_db_path,
+                },
+                "ollama": ollama,
+                "eval": {
+                    "status": "enabled",
+                    "endpoint": "/eval",
+                    "checks": ["answer_contains", "min_documents", "min_relevance"],
+                },
+                "open_source": {
+                    "status": "prepared",
+                    "assets": ["LICENSE", "CONTRIBUTING.md", "SECURITY.md"],
+                },
+            },
+            "stats": stats,
+        }

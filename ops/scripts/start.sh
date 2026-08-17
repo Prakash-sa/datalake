@@ -26,7 +26,16 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_FILE="${PROJECT_DIR}/.logs/startup.log"
-DOCKER_COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
+COMPOSE_DIR="${PROJECT_DIR}/compose"
+
+# Full local stack: base services plus dev overrides and Airflow orchestration.
+compose() {
+    docker compose \
+        -f "${COMPOSE_DIR}/compose.yml" \
+        -f "${COMPOSE_DIR}/compose.dev.yml" \
+        -f "${COMPOSE_DIR}/compose.airflow.yml" \
+        "$@"
+}
 
 # Defaults
 CLEAN=false
@@ -70,12 +79,12 @@ check_requirements() {
     fi
     success "Docker found: $(docker --version)"
     
-    # Check Docker Compose
-    if ! command -v docker-compose &> /dev/null; then
-        error "Docker Compose is not installed"
+    # Check Docker Compose (v2 plugin)
+    if ! docker compose version &> /dev/null; then
+        error "Docker Compose v2 is not available"
         exit 1
     fi
-    success "Docker Compose found: $(docker-compose --version)"
+    success "Docker Compose found: $(docker compose version --short)"
     
     # Check Docker daemon
     if ! docker ps > /dev/null 2>&1; then
@@ -122,7 +131,7 @@ clean_volumes() {
     if [ "$CLEAN" = true ]; then
         header "Cleaning Volumes"
         log "Stopping containers..."
-        docker-compose -f "$DOCKER_COMPOSE_FILE" down -v || true
+        compose down -v || true
         log "Removing old data..."
         rm -rf "$PROJECT_DIR"/volumes/*
         create_directories
@@ -133,7 +142,7 @@ clean_volumes() {
 build_images() {
     if [ "$BUILD" = true ]; then
         header "Building Docker Images"
-        docker-compose -f "$DOCKER_COMPOSE_FILE" build
+        compose build
         success "Images built"
     fi
 }
@@ -145,11 +154,11 @@ start_services() {
     
     if [ "$DETACH" = "-d" ]; then
         log "Starting services in background..."
-        docker-compose -f "$DOCKER_COMPOSE_FILE" up $DETACH
+        compose up $DETACH
         success "Services started in background"
     else
         log "Starting services in foreground..."
-        docker-compose -f "$DOCKER_COMPOSE_FILE" up
+        compose up
     fi
 }
 
@@ -258,7 +267,7 @@ print_summary() {
     echo -e "${GREEN}Useful Commands:${NC}"
     echo "  View logs:         ./ops/scripts/health-check.sh"
     echo "  Stop services:     ./ops/scripts/stop.sh"
-    echo "  Cleanup:           docker-compose down -v"
+    echo "  Cleanup:           ./ops/scripts/stop.sh --clean"
     echo ""
 }
 

@@ -21,7 +21,16 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKER_COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
+COMPOSE_DIR="${PROJECT_DIR}/compose"
+
+# Full local stack: base services plus dev overrides and Airflow orchestration.
+compose() {
+    docker compose \
+        -f "${COMPOSE_DIR}/compose.yml" \
+        -f "${COMPOSE_DIR}/compose.dev.yml" \
+        -f "${COMPOSE_DIR}/compose.airflow.yml" \
+        "$@"
+}
 
 CLEAN=false
 FORCE=""
@@ -42,11 +51,11 @@ cd "$PROJECT_DIR"
 
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}[!] Stopping and removing volumes...${NC}"
-    docker-compose -f "$DOCKER_COMPOSE_FILE" down $FORCE -v
+    compose down $FORCE -v
     echo -e "${GREEN}[✓] All services stopped and volumes removed${NC}"
 else
     echo -e "${BLUE}[*] Stopping services...${NC}"
-    docker-compose -f "$DOCKER_COMPOSE_FILE" down $FORCE
+    compose down $FORCE
     echo -e "${GREEN}[✓] All services stopped${NC}"
     echo -e "\nData persisted in ./volumes/"
     echo -e "To remove volumes, run: ${YELLOW}./ops/scripts/stop.sh --clean${NC}"

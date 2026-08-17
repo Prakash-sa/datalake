@@ -2,18 +2,21 @@
   "name": "datalake-project",
   "private": true,
   "license": "MIT",
+  "description": "Local-first document RAG platform: FastAPI backend, Next.js/Electron desktop UI, Airflow ingestion",
   "engines": {
     "node": ">=22.12.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "postinstall": "npm --prefix apps/rag-query-engine/frontend install",
-    "install:frontend": "npm --prefix apps/rag-query-engine/frontend install",
-    "dev": "npm --prefix apps/rag-query-engine/frontend run dev",
-    "build": "npm --prefix apps/rag-query-engine/frontend run build",
-    "lint": "npm --prefix apps/rag-query-engine/frontend run lint",
-    "electron": "npm --prefix apps/rag-query-engine/frontend run electron",
-    "electron:dev": "npm --prefix apps/rag-query-engine/frontend run electron:dev",
-    "dist": "npm --prefix apps/rag-query-engine/frontend run dist"
+    "postinstall": "npm --prefix frontend install",
+    "install:frontend": "npm --prefix frontend install",
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "electron": "npm --prefix frontend run electron",
+    "electron:dev": "npm --prefix frontend run electron:dev",
+    "dist": "npm --prefix frontend run dist",
+    "up": "docker compose -f compose/compose.yml -f compose/compose.dev.yml up --build",
+    "down": "docker compose -f compose/compose.yml -f compose/compose.dev.yml down --remove-orphans"
   }
 }

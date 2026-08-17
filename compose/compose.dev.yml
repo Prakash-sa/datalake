@@ -1,0 +1,13 @@
+# Development overlay: live source mounting so uvicorn --reload picks up edits.
+#
+#   docker compose -f compose/compose.yml -f compose/compose.dev.yml up
+
+services:
+  rag-backend:
+    environment:
+      ENV: development
+      DEBUG: "true"
+      LOG_LEVEL: DEBUG
+    volumes:
+      # Mounted over the image's copy so edits on the host take effect live.
+      - ../backend/src:/app/src

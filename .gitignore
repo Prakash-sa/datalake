@@ -1,50 +1,43 @@
-# Environment variables
+# ---- Secrets and local environment ----
 .env
 .env.local
 .env.*.local
+!.env.example
 .envrc
-.python-version
+*.pem
+*.key
 
-# Python
+# ---- Python ----
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+build/
+dist/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+MANIFEST
+
+# Tooling caches
 .mypy_cache/
 .ruff_cache/
-.pyre/
-.pytype/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
+.tox/
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
-.venv
 
-# Node.js
+# ---- Node / Next.js ----
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -53,66 +46,49 @@ pnpm-debug.log*
 .eslintcache
 .next/
 out/
-.cache/
 .turbo/
 .vercel/
 *.tsbuildinfo
 yarn.lock
 pnpm-lock.yaml
 
-# IDE and Editor
+# ---- Editors and OS ----
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
 *.sublime-project
 *.sublime-workspace
-
-# OS
+.DS_Store
 Thumbs.db
 .AppleDouble
 .LSOverride
 
-# Docker and volumes
-.dockerignore
-*.log
+# ---- Docker and runtime state ----
 docker-compose.override.yml
+compose/.env
+volumes/
 
-# Database and data
+# ---- Local data stores ----
 chroma_db/
+chroma_data/
+minio_data/
+ollama_data/
+app.db
 *.db
 *.sqlite
 *.sqlite3
 
-# MinIO
-minio_data/
+# ---- Airflow runtime output ----
+infra/airflow/logs/
+infra/airflow/plugins/__pycache__/
+infra/airflow/datalake/
+infra/airflow/airflow.db
 
-# Ollama
-ollama_data/
-
-# dbt
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-
-# Airflow
-airflow-db/logs/
-airflow-db/plugins/__pycache__/
-airflow-db/dags/__pycache__/
-airflow-db/datalake/
-airflow-db/profile/
-airflow-db/sql/
-airflow-db/airflow.db
-
-# Temporary and backup files
+# ---- Logs and temp files ----
+*.log
 *.tmp
 *.bak
 *.backup
 .tmp/
-volumes/
-
-# Project specific
-*.pem
-*.key

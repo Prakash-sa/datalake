@@ -114,13 +114,16 @@ Infrastructure:
 
 Complete documentation is organized in the `docs/` folder:
 
+Start at [docs/INDEX.md](docs/INDEX.md) for the full map.
+
 | Document | Purpose |
 |----------|---------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed system design, components, data flow |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Setup for dev/staging/production, Kubernetes, troubleshooting |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | REST API endpoints, request/response examples |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues, solutions, debugging guide |
-| [docs/SYSTEM_DESIGN_INTERVIEW.md](docs/SYSTEM_DESIGN_INTERVIEW.md) | System design interview Q&A with diagrams |
+| [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) | Detailed system design, components, data flow |
+| [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) | Backend layering, composition, retrieval pipeline |
+| [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) | Setup for dev/staging/production, Kubernetes |
+| [docs/reference/API_REFERENCE.md](docs/reference/API_REFERENCE.md) | REST API endpoints, request/response examples |
+| [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md) | Common issues, solutions, debugging guide |
+| [docs/architecture/SYSTEM_DESIGN_INTERVIEW.md](docs/architecture/SYSTEM_DESIGN_INTERVIEW.md) | System design walkthrough in Q&A form |
 
 ### Port Reference
 | Service | Port | URL |
@@ -144,10 +147,20 @@ Complete documentation is organized in the `docs/` folder:
 ### 1. Start Services
 ```bash
 cd datalake-project
-docker-compose up -d
+cp compose/.env.example compose/.env
+
+make up              # base stack with dev overrides
+# make up-airflow    # ...plus the Airflow orchestration stack
+# make up-prod       # production overlay, detached
 
 # Verify services are running
 docker ps | grep -E "rag-|airflow-|ollama"
+```
+
+`make help` lists every target. The equivalent raw command is:
+
+```bash
+docker compose -f compose/compose.yml -f compose/compose.dev.yml up --build
 ```
 
 ### 2. Verify Health
@@ -190,74 +203,79 @@ curl -X POST http://localhost:8000/documents/search \
 
 ### Stop Services
 ```bash
-docker-compose down
+make down
 
-# Remove volumes (optional - deletes data)
-docker-compose down -v
+# Remove volumes too (deletes indexed data)
+docker compose -f compose/compose.yml -f compose/compose.dev.yml down -v
+```
+
+### Backend development
+
+```bash
+make setup-backend   # venv + editable install with dev extras
+make check           # lint, format check, type check, tests
+make backend-run     # run the API directly
 ```
 
 ## 📂 Project Structure
 
 ```
 datalake-project/
-├── package.json                     # Root npm entrypoint for frontend/desktop commands
-├── docker-compose.yml               # Main local orchestration
-├── .env.example                     # Environment variable template
+├── Makefile                          # Developer entry points (`make help`)
+├── package.json                      # npm entrypoint for frontend/desktop commands
+├── .editorconfig
+├── .pre-commit-config.yaml
 │
-├── docs/
-│   ├── INDEX.md                     # Documentation map
-│   ├── ARCHITECTURE.md              # Detailed system design
-│   ├── DEPLOYMENT.md                # Setup and configuration
-│   ├── API_REFERENCE.md             # API endpoints and examples
-│   ├── TROUBLESHOOTING.md           # Common issues and fixes
-│   ├── PRIVACY.md                   # Local data and telemetry policy
-│   ├── RELEASE.md                   # Release and signing process
-│   ├── SECURITY_THREAT_MODEL.md     # Desktop threat model
-│   ├── adr/                         # Architecture decisions
-│   ├── production/                  # Desktop and release production plans
-│   ├── guides/                      # Operational guides
-│   └── reports/                     # Historical completion reports
+├── compose/                          # Container orchestration
+│   ├── compose.yml                   # Base stack: ollama, minio, chroma, backend, frontend
+│   ├── compose.dev.yml               # Dev overlay: source mounting and reload
+│   ├── compose.prod.yml              # Prod overlay: hardened images, limits, restart
+│   ├── compose.airflow.yml           # Add-on: postgres, redis, Airflow services
+│   └── .env.example                  # Compose variable template
 │
-├── infra/airflow/                   # Airflow orchestration
-│   ├── dags/
-│   │   └── rag_vector_db_ingestion_dag.py  # Document pipeline (6 tasks)
+├── backend/                          # FastAPI service
+│   ├── pyproject.toml                # Dependencies, lint, test, build config
+│   ├── rag-backend.spec              # PyInstaller sidecar bundle
+│   ├── ARCHITECTURE.md               # Layering and composition
+│   ├── .env.example
+│   ├── src/rag_backend/
+│   │   ├── app.py                    # create_app() factory
+│   │   ├── __main__.py               # `python -m rag_backend`
+│   │   ├── settings.py               # Environment-driven config
+│   │   ├── lifespan.py               # Startup/shutdown wiring
+│   │   ├── dependencies.py           # FastAPI DI providers
+│   │   ├── middleware/               # Bearer-token auth
+│   │   ├── api/routes/               # health, models, settings, documents, search, evals
+│   │   ├── schemas/                  # Request/response models
+│   │   ├── domain/                   # Entities, no I/O
+│   │   ├── application/              # Use cases and retrieval logic
+│   │   └── infrastructure/           # Chroma, Ollama, SQLite adapters
+│   └── tests/{unit,integration}/
+│
+├── frontend/                         # Next.js + Electron desktop UI
+│   ├── app/                          # App router pages and styles
+│   ├── electron/                     # Main and preload processes
+│   ├── scripts/                      # Sidecar packaging
+│   └── electron-builder.yml
+│
+├── evals/                            # Deterministic eval fixtures and guide
+│
+├── infra/airflow/                    # Airflow image and DAGs
+│   ├── dags/rag_vector_db_ingestion_dag.py
 │   └── Dockerfile
 │
-├── apps/rag-query-engine/           # Active local RAG product
-│   ├── backend/                     # FastAPI application
-│   │   ├── main.py                  # Entry point
-│   │   ├── rag_engine.py            # Core RAG logic
-│   │   ├── requirements.txt         # Dependencies
-│   │   ├── application/
-│   │   │   └── rag_service.py       # Search & LLM service
-│   │   ├── domain/
-│   │   │   └── models.py            # Data models
-│   │   ├── infrastructure/
-│   │   │   └── config_manager.py    # Configuration
-│   │   └── interfaces/
-│   │       ├── request_models.py    # API request schemas
-│   │       └── response_models.py   # API response schemas
-│   │
-│   ├── frontend/                    # Next.js and Electron desktop UI
-│   │   ├── app/
-│   │   │   ├── page.tsx             # Main page component
-│   │   │   ├── layout.tsx           # Layout wrapper
-│   │   │   └── globals.css          # Styles
-│   │   ├── electron/                # Electron main and preload processes
-│   │   ├── package.json
-│   │   ├── tailwind.config.ts
-│   │   └── Dockerfile
-│   │
-│   ├── docker-compose.yml           # Backend services
-│   └── docker-compose.prod.yml      # Production config
+├── ops/scripts/                      # Operational shell scripts
 │
-├── docs/legacy/backend/             # Legacy/supporting backend docs
-│   ├── README.md
-│   └── TESTING.md
+├── docs/
+│   ├── INDEX.md                      # Documentation map
+│   ├── adr/                          # Architecture decision records
+│   ├── architecture/                 # System design and diagrams
+│   ├── reference/                    # API reference
+│   ├── operations/                   # Deployment, pipeline, release, troubleshooting
+│   ├── security/                     # Threat model and privacy
+│   └── assets/
 │
-├── ops/scripts/                     # Local operational scripts
-├── volumes/                         # Local generated service data (ignored)
-└── README.md                        # This file
+└── volumes/                          # Generated runtime data (git-ignored)
 ```
 
 ## 🎯 Core Features
@@ -393,7 +411,7 @@ docker exec rag-backend rm -rf /opt/airflow/chroma_db
 docker restart airflow-scheduler
 ```
 
-See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more solutions.
+See [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md) for more solutions.
 
 ## 📈 Performance Tuning
 
@@ -417,15 +435,15 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more solutions.
 
 ### Development
 ```bash
-docker-compose -f docker-compose.yml up -d
+make up
 ```
 
 ### Production
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+make up-prod
 ```
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Kubernetes and cloud deployment.
+See [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) for Kubernetes and cloud deployment.
 
 ## 📖 Learning Resources
 
@@ -438,7 +456,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Kubernetes and cloud deployment
 ## 🤝 Contributing
 
 For issues, feature requests, or improvements:
-1. Check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+1. Check [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md)
 2. Review existing issues
 3. Submit detailed bug reports with logs
 4. Create pull requests with tests
@@ -450,9 +468,9 @@ MIT License - See LICENSE file for details
 ## 🔐 Security and Privacy
 
 - [Security policy](SECURITY.md)
-- [Threat model](docs/SECURITY_THREAT_MODEL.md)
-- [Privacy policy](docs/PRIVACY.md)
-- [Release and signing process](docs/RELEASE.md)
+- [Threat model](docs/security/SECURITY_THREAT_MODEL.md)
+- [Privacy policy](docs/security/PRIVACY.md)
+- [Release and signing process](docs/operations/RELEASE.md)
 
 ## 📞 Support
 
@@ -468,16 +486,16 @@ MIT License - See LICENSE file for details
 
 ```bash
 # View logs
-docker-compose logs -f [service]
+make logs
 
 # Stop services
 ./ops/scripts/stop.sh
 
 # Clean everything
-docker-compose down -v
+make down
 
 # Rebuild images
-docker-compose build --no-cache
+docker compose -f compose/compose.yml build --no-cache
 
 # Access Airflow
 open http://localhost:9093
@@ -493,10 +511,10 @@ curl -X POST http://localhost:8000/documents/search \
 
 ## 📞 Support & Documentation
 
-- **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design
-- **Deployment**: See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for setup help
-- **API Usage**: See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for endpoints
-- **Issues**: See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for solutions
+- **Architecture**: See [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for system design
+- **Deployment**: See [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) for setup help
+- **API Usage**: See [docs/reference/API_REFERENCE.md](docs/reference/API_REFERENCE.md) for endpoints
+- **Issues**: See [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md) for solutions
 
 ## 🎓 Learning Resources
 

@@ -1,0 +1,17 @@
+# Default owner for everything in the repository.
+*                       @Prakash-sa
+
+# Application code
+/backend/               @Prakash-sa
+/frontend/              @Prakash-sa
+/evals/                 @Prakash-sa
+
+# Orchestration, containers, and CI
+/infra/                 @Prakash-sa
+/compose/               @Prakash-sa
+/ops/                   @Prakash-sa
+/.github/               @Prakash-sa
+
+# Security-sensitive files warrant an explicit review.
+/SECURITY.md            @Prakash-sa
+/docs/security/         @Prakash-sa

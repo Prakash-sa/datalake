@@ -2,37 +2,71 @@
 
 ## Development Setup
 
-1. Start the backend dependencies from `apps/rag-query-engine`:
+Run `make help` to see every available target.
+
+1. Install dependencies:
    ```bash
-   docker-compose up --build
+   make setup            # backend venv (editable, with dev extras) + frontend deps
    ```
-2. Run the frontend:
+2. Start the supporting services (Ollama, MinIO, Chroma):
    ```bash
-   npm install
-   npm run dev
+   cp compose/.env.example compose/.env
+   make up
    ```
-3. Run the desktop shell:
+3. Run the pieces you are working on:
    ```bash
-   npm run electron:dev
+   make backend-run      # FastAPI on 127.0.0.1:8000
+   make frontend-run     # Next.js dev server on :3000
+   make desktop          # Electron shell against the dev server
    ```
 4. Build a local desktop package:
    ```bash
-   python3 -m pip install pyinstaller
-   npm run dist
+   make dist
    ```
 
 ## Quality Bar
 
-- Keep API behavior covered by deterministic checks through `/eval` when retrieval or prompt behavior changes.
-- Keep desktop changes compatible with the web UI; Electron should wrap the app, not fork product behavior.
-- Do not commit local model files, Chroma data, `.env` files, logs, or generated desktop installers.
-- Prefer small pull requests with a clear test plan and screenshots for UI changes.
+Before opening a pull request:
+
+```bash
+make check              # lint + format check + type check + tests
+```
+
+- New behavior needs tests. Pure logic belongs in `backend/tests/unit/`;
+  request/response contracts belong in `backend/tests/integration/`.
+- Keep retrieval and prompt changes covered by deterministic `/eval` cases.
+- Keep desktop changes compatible with the web UI; Electron should wrap the app,
+  not fork product behavior.
+- Do not commit local model files, Chroma data, `.env` files, logs, or generated
+  desktop installers.
+- Prefer small pull requests with a clear test plan, and screenshots for UI changes.
+
+Optional but recommended:
+
+```bash
+pre-commit install      # runs ruff, whitespace, and secret checks on commit
+```
+
+## Project Layout
+
+| Path | Contents |
+| --- | --- |
+| `backend/` | FastAPI service (`src/rag_backend/`) and its tests |
+| `frontend/` | Next.js web UI and Electron desktop shell |
+| `evals/` | Deterministic eval fixtures and the eval guide |
+| `compose/` | Base compose stack plus dev/prod/airflow overlays |
+| `infra/airflow/` | Airflow image and ingestion DAGs |
+| `ops/scripts/` | Operational shell scripts |
+| `docs/` | Architecture, reference, operations, and security docs |
+
+Backend layering is documented in [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md).
 
 ## Pull Request Checklist
 
+- `make check` passes.
 - The backend starts and `/health` returns healthy.
 - `/readiness` reports loop engineering, memory, eval, and open-source capabilities.
-- Frontend TypeScript and lint checks pass.
-- Electron launches with `npm run electron:dev`.
-- Desktop packaging includes the PyInstaller sidecar in `apps/rag-query-engine/backend/dist`.
-- New configuration is documented in README or `.env.production`.
+- Electron launches with `make desktop`.
+- Desktop packaging includes the PyInstaller sidecar in `backend/dist`.
+- New configuration is documented in `backend/.env.example` or
+  `compose/.env.example`, whichever consumes it.

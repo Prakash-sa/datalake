@@ -22,7 +22,16 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKER_COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
+COMPOSE_DIR="${PROJECT_DIR}/compose"
+
+# Full local stack: base services plus dev overrides and Airflow orchestration.
+compose() {
+    docker compose \
+        -f "${COMPOSE_DIR}/compose.yml" \
+        -f "${COMPOSE_DIR}/compose.dev.yml" \
+        -f "${COMPOSE_DIR}/compose.airflow.yml" \
+        "$@"
+}
 
 WATCH=false
 VERBOSE=false
@@ -64,12 +73,12 @@ check_service() {
 
 check_docker_services() {
     echo -e "${CYAN}Container Status:${NC}\n"
-    docker-compose -f "$DOCKER_COMPOSE_FILE" ps
+    compose ps
 }
 
 check_port_binding() {
     echo -e "\n${CYAN}Port Bindings:${NC}\n"
-    docker-compose -f "$DOCKER_COMPOSE_FILE" ps | grep -E "0.0.0.0|PORTS" || true
+    compose ps | grep -E "0.0.0.0|PORTS" || true
 }
 
 check_disk_usage() {
@@ -81,10 +90,10 @@ check_logs() {
     if [ "$VERBOSE" = true ]; then
         echo -e "\n${CYAN}Recent Logs:${NC}\n"
         echo -e "${YELLOW}Airflow Scheduler:${NC}"
-        docker-compose -f "$DOCKER_COMPOSE_FILE" logs airflow-scheduler --tail=5 2>/dev/null || echo "No logs"
+        compose logs airflow-scheduler --tail=5 2>/dev/null || echo "No logs"
         
         echo -e "\n${YELLOW}RAG Backend:${NC}"
-        docker-compose -f "$DOCKER_COMPOSE_FILE" logs rag-backend --tail=5 2>/dev/null || echo "No logs"
+        compose logs rag-backend --tail=5 2>/dev/null || echo "No logs"
     fi
 }
 

@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-query-engine-backend"
+version = "2.0.0"
+description = "Local-first document RAG backend sidecar"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.104.1",
+  "uvicorn[standard]>=0.24.0",
+  "pydantic>=2.7.4",
+  "pydantic-settings>=2.1.0",
+  "python-dotenv>=1.0.0",
+  "python-multipart>=0.0.6",
+  "langchain>=0.1.0",
+  "langchain-ollama>=0.1.0",
+  "langchain-core>=0.2.0",
+  "httpx>=0.25.2",
+  "chromadb>=0.4.0",
+  "PyMuPDF>=1.24.0",
+  "python-docx>=1.1.0",
+  "gunicorn>=21.2.0",
+]
+# Note: `minio` is used only by the Airflow DAG, which installs it separately via
+# _PIP_ADDITIONAL_REQUIREMENTS; it is not a backend dependency.
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.3",
+  "pytest-asyncio>=0.21.1",
+  "pytest-cov>=4.1.0",
+  "ruff>=0.1.8",
+  "mypy>=1.8.0",
+]
+# Only what PyInstaller needs to build the desktop sidecar.
+packaging = ["pyinstaller>=6.3.0"]
+
+[project.scripts]
+rag-backend = "rag_backend.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+  "integration: exercises the assembled FastAPI application",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+  # Broad excepts are deliberate at the service boundary: a failed document
+  # must degrade to an error payload, never take down the process.
+  "B904",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+# Prompt text is a literal contract with the model; reflowing it changes the prompt.
+"src/rag_backend/application/prompts.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+no_implicit_optional = true

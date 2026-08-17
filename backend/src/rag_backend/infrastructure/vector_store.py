@@ -1,0 +1,129 @@
+"""Chroma persistent vector store adapter."""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import chromadb
+
+logger = logging.getLogger(__name__)
+
+COLLECTION_NAME = "documents"
+# Cosine distance keeps `similarity = 1 - distance` in the [0, 1] range.
+COLLECTION_METADATA = {"hnsw:space": "cosine"}
+
+
+def normalize_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """Reduce metadata to the primitive values Chroma accepts.
+
+    Chroma rejects nested structures and ``None``; non-primitives are stringified
+    and empty values dropped.
+    """
+    normalized: dict[str, Any] = {}
+    for key, value in (metadata or {}).items():
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            normalized[str(key)] = value
+        else:
+            normalized[str(key)] = str(value)
+    return normalized
+
+
+class ChromaVectorStore:
+    """Persistent Chroma collection holding document chunk embeddings."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        Path(self.path).mkdir(parents=True, exist_ok=True)
+        self._client = chromadb.PersistentClient(path=self.path)
+        self._collection = self._client.get_or_create_collection(
+            name=COLLECTION_NAME, metadata=COLLECTION_METADATA
+        )
+        logger.info("Chroma collection '%s' ready at %s", COLLECTION_NAME, self.path)
+
+    def count(self) -> int:
+        """Number of indexed chunks."""
+        return self._collection.count()
+
+    def upsert(
+        self,
+        ids: list[str],
+        contents: list[str],
+        metadatas: list[dict[str, Any]],
+        embeddings: list[list[float]],
+    ) -> None:
+        """Insert or replace chunks by id."""
+        if not ids:
+            return
+        # Chroma's stubs describe narrower numpy-flavoured types than the plain
+        # lists it accepts at runtime.
+        self._collection.upsert(
+            ids=ids,
+            documents=contents,
+            metadatas=metadatas,  # type: ignore[arg-type]
+            embeddings=embeddings,  # type: ignore[arg-type]
+        )
+
+    def delete(self, ids: list[str]) -> None:
+        """Delete chunks by id."""
+        if not ids:
+            return
+        self._collection.delete(ids=ids)
+
+    def query(self, embedding: list[float], n_results: int) -> list[dict[str, Any]]:
+        """Nearest-neighbour search, returning similarity-scored chunks."""
+        results = self._collection.query(
+            query_embeddings=[embedding],  # type: ignore[arg-type]
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"],
+        )
+
+        # Chroma omits any field that was not requested, so treat a missing
+        # block as an empty result rather than indexing into None.
+        documents = results["documents"] or [[]]
+        metadatas = results["metadatas"] or [[]]
+        distances = results["distances"] or [[]]
+
+        matches: list[dict[str, Any]] = []
+        # Parallel result arrays must align; a mismatch would silently pair
+        # content with the wrong score.
+        for content, metadata, distance in zip(
+            documents[0], metadatas[0], distances[0], strict=True
+        ):
+            matches.append(
+                {
+                    "id": (metadata or {}).get("id", "doc"),
+                    "content": content,
+                    "metadata": metadata,
+                    "similarity": 1 - distance,
+                }
+            )
+        return matches
+
+    def check_storage(self) -> dict[str, Any]:
+        """Verify the persistence directory exists and is writable."""
+        try:
+            directory = Path(self.path)
+            directory.mkdir(parents=True, exist_ok=True)
+            probe = directory / ".readiness_check"
+            probe.write_text(datetime.now().isoformat(), encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return {
+                "status": "ready",
+                "provider": "chroma",
+                "persistent_path": str(directory),
+                "writable": True,
+            }
+        except OSError as e:
+            logger.warning("Chroma storage readiness failed: %s", e)
+            return {
+                "status": "error",
+                "provider": "chroma",
+                "persistent_path": self.path,
+                "writable": False,
+                "error": str(e),
+            }

@@ -161,8 +161,8 @@ echo ""
 
 # 6. System Health Summary
 print_header "System Health Summary"
-HEALTHY_SERVICES=$(docker-compose ps 2>/dev/null | grep "Up.*healthy" | wc -l)
-TOTAL_SERVICES=$(docker-compose ps 2>/dev/null | grep "Up" | wc -l)
+HEALTHY_SERVICES=$(docker compose ps 2>/dev/null | grep "Up.*healthy" | wc -l)
+TOTAL_SERVICES=$(docker compose ps 2>/dev/null | grep "Up" | wc -l)
 
 print_info "Healthy Services: $HEALTHY_SERVICES / $TOTAL_SERVICES"
 
@@ -201,7 +201,7 @@ case "$STATE" in
         ;;
     "queued")
         echo -e "${YELLOW}⏳ Pipeline is queued and waiting to start...${NC}"
-        echo "1. Ensure scheduler is running: docker-compose logs airflow-scheduler"
+        echo "1. Ensure scheduler is running: ./ops/scripts/health-check.sh"
         echo "2. Verify all DAG dependencies are met"
         echo "3. Check for any errors in Airflow logs"
         ;;
