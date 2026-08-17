@@ -8,10 +8,22 @@ const path = require('path');
 const DEFAULT_APP_URL = 'http://localhost:3000';
 const APP_PROTOCOL = 'app';
 const isDev = !app.isPackaged;
+const CSP = [
+  "default-src 'self' app://local",
+  "script-src 'self' app://local",
+  "style-src 'self' app://local 'unsafe-inline'",
+  "img-src 'self' app://local data:",
+  "font-src 'self' app://local data:",
+  "connect-src 'self' app://local http://127.0.0.1:* http://localhost:3000",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
 
 let backendProcess = null;
 let backendBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 let backendToken = null;
+let mainWindow = null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -35,6 +47,11 @@ function getAppUrl() {
 
 function getStaticRoot() {
   return path.join(__dirname, '..', 'out');
+}
+
+function isTrustedSender(event) {
+  const url = event.senderFrame?.url || '';
+  return url.startsWith(`${APP_PROTOCOL}://local`) || (isDev && url.startsWith(DEFAULT_APP_URL));
 }
 
 function getContentType(filePath) {
@@ -75,13 +92,19 @@ function registerAppProtocol() {
       const filePath = await resolveStaticPath(request.url);
       const data = await fs.readFile(filePath);
       return new Response(data, {
-        headers: { 'content-type': getContentType(filePath) },
+        headers: {
+          'content-security-policy': CSP,
+          'content-type': getContentType(filePath),
+        },
       });
     } catch {
       const fallback = path.join(getStaticRoot(), 'index.html');
       const data = await fs.readFile(fallback);
       return new Response(data, {
-        headers: { 'content-type': 'text/html' },
+        headers: {
+          'content-security-policy': CSP,
+          'content-type': 'text/html',
+        },
       });
     }
   });
@@ -197,7 +220,11 @@ function stopBackend() {
 }
 
 function registerApiProxy() {
-  ipcMain.handle('api:request', async (_event, request) => {
+  ipcMain.handle('api:request', async (event, request) => {
+    if (!isTrustedSender(event)) {
+      return { ok: false, status: 403, error: 'Untrusted IPC sender' };
+    }
+
     const method = request?.method || 'GET';
     const requestPath = request?.path;
 
@@ -230,7 +257,11 @@ function registerApiProxy() {
     };
   });
 
-  ipcMain.handle('files:selectDocuments', async () => {
+  ipcMain.handle('files:selectDocuments', async (event) => {
+    if (!isTrustedSender(event)) {
+      return [];
+    }
+
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: [
@@ -258,14 +289,30 @@ function createWindow() {
       sandbox: true,
     },
   });
+  mainWindow = window;
 
   window.once('ready-to-show', () => window.show());
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://') || url.startsWith('mailto:')) {
-      shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
+        shell.openExternal(parsed.toString());
+      }
+    } catch {
+      // Block malformed external URLs.
     }
     return { action: 'deny' };
+  });
+
+  window.webContents.on('before-input-event', (event, input) => {
+    if (!isDev && input.key === 'F12') event.preventDefault();
+  });
+
+  window.webContents.on('devtools-opened', () => {
+    if (!isDev && process.env.RAG_ENABLE_DEVTOOLS !== 'true') {
+      window.webContents.closeDevTools();
+    }
   });
 
   window.webContents.on('will-navigate', (event, url) => {
@@ -276,23 +323,35 @@ function createWindow() {
   window.loadURL(getAppUrl());
 }
 
-app.whenReady().then(async () => {
-  registerAppProtocol();
-  registerApiProxy();
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  try {
-    await startBackend();
-  } catch (error) {
-    console.error(error);
-  }
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(async () => {
+    registerAppProtocol();
+    registerApiProxy();
+    session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    try {
+      await startBackend();
+    } catch (error) {
+      console.error(error);
+    }
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

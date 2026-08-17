@@ -1,0 +1,45 @@
+appId: com.datalake.ragqueryengine
+productName: RAG Query Engine
+asar: true
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+
+files:
+  - electron/**/*
+  - out/**/*
+  - public/**/*
+  - package.json
+  - next.config.js
+
+extraResources:
+  - from: ../backend/dist
+    to: backend
+    filter:
+      - "**/*"
+
+directories:
+  output: dist
+  buildResources: build
+
+compression: maximum
+
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  target:
+    - dmg
+    - zip
+
+win:
+  target:
+    - nsis
+
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb
+
+publish:
+  provider: github
+  releaseType: draft

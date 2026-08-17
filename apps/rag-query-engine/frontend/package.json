@@ -36,42 +36,5 @@
     "postcss": "^8.4.0",
     "autoprefixer": "^10.4.0",
     "wait-on": "^7.2.0"
-  },
-  "build": {
-    "appId": "com.datalake.ragqueryengine",
-    "productName": "RAG Query Engine",
-    "files": [
-      "electron/**/*",
-      "out/**/*",
-      "public/**/*",
-      "package.json",
-      "next.config.js"
-    ],
-    "extraResources": [
-      {
-        "from": "../backend/dist",
-        "to": "backend",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "directories": {
-      "output": "dist"
-    },
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": "AppImage",
-      "category": "Development"
-    }
   }
 }

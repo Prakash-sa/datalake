@@ -289,6 +289,8 @@ Consider replacing LangChain with direct `httpx` calls to the Ollama API. The cu
 
 Move Electron packaging into `electron-builder.yml`.
 
+Implementation status: packaging configuration now lives in `frontend/electron-builder.yml` with `asar`, explicit artifacts, extra sidecar resources, AppImage and DEB targets, and draft GitHub publish settings.
+
 Required configuration:
 
 | Setting | Recommendation |
@@ -350,6 +352,8 @@ The existing context isolation and sandbox settings are correct foundations, but
 - Redact paths, prompts, answers, and document text from production logs.
 - Perform dependency and packaged-artifact scanning.
 - Keep Electron on a supported release line.
+
+Implementation status: the desktop shell now serves a CSP on `app://local`, validates IPC senders, denies permissions, restricts navigation and external URLs, prevents multiple app instances, and gates DevTools in production.
 
 Electron specifically warns against exposing general Electron APIs through `contextBridge`; preload APIs should filter every argument. See [context isolation guidance](https://www.electronjs.org/docs/latest/tutorial/context-isolation).
 
