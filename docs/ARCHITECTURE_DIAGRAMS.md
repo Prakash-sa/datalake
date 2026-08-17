@@ -586,8 +586,8 @@ Named volumes:
 └─ postgres_data/ (Database persistence)
 
 Host mounts:
-├─ ./airflow-db/dags/ → /opt/airflow/dags
-├─ ./rag-query-engine/ → /app
+├─ ./infra/airflow/dags/ → /opt/airflow/dags
+├─ ./apps/rag-query-engine/ → /app
 └─ ./volumes/ → /data
 ```
 

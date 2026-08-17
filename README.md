@@ -200,21 +200,26 @@ docker-compose down -v
 
 ```
 datalake-project/
-├── docs/
-│   ├── ARCHITECTURE.md              # Detailed system design
-│   ├── DEPLOYMENT.md                # Setup & configuration
-│   ├── API_REFERENCE.md             # API endpoints & examples
-│   ├── TROUBLESHOOTING.md           # Common issues & fixes
-│   └── SYSTEM_DESIGN_INTERVIEW.md   # Interview Q&A
+├── package.json                     # Root npm entrypoint for frontend/desktop commands
+├── docker-compose.yml               # Main local orchestration
+├── .env.example                     # Environment variable template
 │
-├── airflow-db/                      # Airflow orchestration
+├── docs/
+│   ├── INDEX.md                     # Documentation map
+│   ├── ARCHITECTURE.md              # Detailed system design
+│   ├── DEPLOYMENT.md                # Setup and configuration
+│   ├── API_REFERENCE.md             # API endpoints and examples
+│   ├── TROUBLESHOOTING.md           # Common issues and fixes
+│   ├── production/                  # Desktop and release production plans
+│   ├── guides/                      # Operational guides
+│   └── reports/                     # Historical completion reports
+│
+├── infra/airflow/                   # Airflow orchestration
 │   ├── dags/
 │   │   └── rag_vector_db_ingestion_dag.py  # Document pipeline (6 tasks)
-│   ├── config/
-│   │   └── airflow.cfg
-│   └── docker-compose.yml
+│   └── Dockerfile
 │
-├── rag-query-engine/                # RAG backend & frontend
+├── apps/rag-query-engine/           # Active local RAG product
 │   ├── backend/                     # FastAPI application
 │   │   ├── main.py                  # Entry point
 │   │   ├── rag_engine.py            # Core RAG logic
@@ -229,25 +234,25 @@ datalake-project/
 │   │       ├── request_models.py    # API request schemas
 │   │       └── response_models.py   # API response schemas
 │   │
-│   ├── frontend/                    # Next.js React UI
+│   ├── frontend/                    # Next.js and Electron desktop UI
 │   │   ├── app/
 │   │   │   ├── page.tsx             # Main page component
 │   │   │   ├── layout.tsx           # Layout wrapper
 │   │   │   └── globals.css          # Styles
+│   │   ├── electron/                # Electron main and preload processes
 │   │   ├── package.json
 │   │   ├── tailwind.config.ts
 │   │   └── Dockerfile
 │   │
-│   ├── chroma_db/                   # Vector database storage
 │   ├── docker-compose.yml           # Backend services
 │   └── docker-compose.prod.yml      # Production config
 │
-├── backend/                         # Additional docs
+├── docs/legacy/backend/             # Legacy/supporting backend docs
 │   ├── README.md
 │   └── TESTING.md
 │
-├── docker-compose.yml               # Main orchestration
-├── .env.example                     # Environment variables
+├── ops/scripts/                     # Local operational scripts
+├── volumes/                         # Local generated service data (ignored)
 └── README.md                        # This file
 ```
 
@@ -455,7 +460,7 @@ MIT License - See LICENSE file for details
 docker-compose logs -f [service]
 
 # Stop services
-./scripts/stop.sh
+./ops/scripts/stop.sh
 
 # Clean everything
 docker-compose down -v

@@ -15,7 +15,7 @@ This guide covers deploying the DataLake RAG system across different environment
 
 ```bash
 cd datalake-project
-./scripts/start.sh
+./ops/scripts/start.sh
 ```
 
 This will:
@@ -110,7 +110,7 @@ PostgreSQL:
 
 ```bash
 # Check all services
-./scripts/health-check.sh
+./ops/scripts/health-check.sh
 
 # Expected output:
 # ✓ Frontend: http://localhost:3000
@@ -377,7 +377,7 @@ aws ebs create-volume --snapshot-id snap-xxxxx
 kubectl scale deployment --replicas=3 -n datalake
 
 # 6. Verify
-./scripts/health-check.sh
+./ops/scripts/health-check.sh
 ```
 
 ## Rolling Updates

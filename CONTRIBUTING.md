@@ -2,13 +2,12 @@
 
 ## Development Setup
 
-1. Start the backend dependencies from `rag-query-engine`:
+1. Start the backend dependencies from `apps/rag-query-engine`:
    ```bash
    docker-compose up --build
    ```
 2. Run the frontend:
    ```bash
-   cd rag-query-engine/frontend
    npm install
    npm run dev
    ```
@@ -35,5 +34,5 @@
 - `/readiness` reports loop engineering, memory, eval, and open-source capabilities.
 - Frontend TypeScript and lint checks pass.
 - Electron launches with `npm run electron:dev`.
-- Desktop packaging includes the PyInstaller sidecar in `rag-query-engine/backend/dist`.
+- Desktop packaging includes the PyInstaller sidecar in `apps/rag-query-engine/backend/dist`.
 - New configuration is documented in README or `.env.production`.

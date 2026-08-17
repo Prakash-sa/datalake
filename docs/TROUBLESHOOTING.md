@@ -4,7 +4,7 @@
 
 ```bash
 # Run complete health check
-./scripts/health-check.sh
+./ops/scripts/health-check.sh
 
 # View all logs
 docker-compose logs -f
@@ -222,7 +222,7 @@ A. **Chroma Index Too Large**
 curl -X DELETE http://localhost:8001/api/v1/collections/documents
 
 # Option 2: Archive old documents
-./scripts/archive-documents.sh
+./ops/scripts/archive-documents.sh
 
 # Option 3: Increase memory limit
 # docker-compose.yml:
@@ -680,14 +680,14 @@ docker-compose logs -f --tail=100
 
 3. **Run diagnostics**
    ```bash
-   ./scripts/health-check.sh
-   ./scripts/diagnose.sh
+   ./ops/scripts/health-check.sh
+   ./ops/scripts/diagnose.sh
    ```
 
 4. **Common fixes**
-   - Restart services: `./scripts/restart.sh`
-   - Clean state: `./scripts/clean.sh`
-   - Full rebuild: `./scripts/rebuild.sh`
+   - Restart services: `./ops/scripts/restart.sh`
+   - Clean state: `./ops/scripts/clean.sh`
+   - Full rebuild: `./ops/scripts/rebuild.sh`
 
 5. **System information**
    ```bash

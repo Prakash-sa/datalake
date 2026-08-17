@@ -291,7 +291,7 @@ This is an enterprise-grade Document Retrieval-Augmented Generation (RAG) system
 1. Check Docker daemon: `docker ps`
 2. View logs: `docker-compose logs [service]`
 3. Verify ports: `lsof -i :PORT`
-4. Restart: `./scripts/stop.sh && ./scripts/start.sh`
+4. Restart: `./ops/scripts/stop.sh && ./ops/scripts/start.sh`
 
 ### Documents not indexed
 1. Verify MinIO has documents: `localhost:9001`

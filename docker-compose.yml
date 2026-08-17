@@ -37,7 +37,7 @@ x-airflow-common: &airflow-common
     redis:
       condition: service_healthy
   volumes:
-    - ./airflow-db/dags:/opt/airflow/dags
+    - ./infra/airflow/dags:/opt/airflow/dags
     - ./volumes/airflow_logs:/opt/airflow/logs
     - ./volumes/airflow_plugins:/opt/airflow/plugins
     - ./volumes/chroma_db:/opt/airflow/chroma_db
@@ -168,7 +168,7 @@ services:
 
   rag-backend:
     build:
-      context: ./rag-query-engine/backend
+      context: ./apps/rag-query-engine/backend
       dockerfile: Dockerfile
     container_name: rag-backend
     ports:
@@ -189,7 +189,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - ./rag-query-engine/backend:/app
+      - ./apps/rag-query-engine/backend:/app
       - ./volumes/chroma_db:/app/chroma_db
     networks:
       - rag-network
@@ -202,7 +202,7 @@ services:
 
   rag-frontend:
     build:
-      context: ./rag-query-engine/frontend
+      context: ./apps/rag-query-engine/frontend
       dockerfile: Dockerfile
     container_name: rag-frontend
     ports:

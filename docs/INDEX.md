@@ -52,7 +52,7 @@ Welcome to the Enterprise Document RAG Platform! This guide helps you navigate a
 | **SYSTEM_DESIGN_INTERVIEW.md** | Interview Q&A + design deep-dive | 30 min | Architects/Interviewees |
 | **QUICK_START_PRODUCTION.md** | Fast setup & common tasks | 10 min | New users |
 | **ARCHITECTURE_DIAGRAMS.md** | Visual architecture + flows | 15 min | Visual learners |
-| **PROJECT_COMPLETION_FINAL.md** | Status report & metrics | 10 min | Stakeholders |
+| **reports/PROJECT_COMPLETION_FINAL.md** | Status report & metrics | 10 min | Stakeholders |
 
 ---
 
@@ -239,7 +239,7 @@ Welcome to the Enterprise Document RAG Platform! This guide helps you navigate a
 
 ---
 
-### PROJECT_COMPLETION_FINAL.md
+### reports/PROJECT_COMPLETION_FINAL.md
 **Status Report & Metrics** (10KB)
 
 - Executive summary
@@ -272,7 +272,7 @@ Welcome to the Enterprise Document RAG Platform! This guide helps you navigate a
 
 **Production Deployment**
 → See: SYSTEM_DESIGN_INTERVIEW.md (Q21)
-→ Also: DEPLOYMENT.md, PROJECT_COMPLETION_FINAL.md
+→ Also: DEPLOYMENT.md, reports/PROJECT_COMPLETION_FINAL.md
 
 **Performance Tuning**
 → See: SYSTEM_DESIGN_INTERVIEW.md (Q16)
@@ -349,7 +349,7 @@ By category:
 | Airflow Pipeline | SYSTEM_DESIGN_INTERVIEW.md (Q13-15) | ARCHITECTURE_DIAGRAMS.md | README.md |
 | Performance | SYSTEM_DESIGN_INTERVIEW.md (Q16) | ARCHITECTURE_DIAGRAMS.md | TROUBLESHOOTING.md |
 | Scaling | SYSTEM_DESIGN_INTERVIEW.md (Q17-18) | DEPLOYMENT.md | README.md |
-| Production | SYSTEM_DESIGN_INTERVIEW.md (Q21-22) | DEPLOYMENT.md | PROJECT_COMPLETION_FINAL.md |
+| Production | SYSTEM_DESIGN_INTERVIEW.md (Q21-22) | DEPLOYMENT.md | reports/PROJECT_COMPLETION_FINAL.md |
 | Setup | QUICK_START_PRODUCTION.md | DEPLOYMENT.md | README.md |
 | Troubleshooting | TROUBLESHOOTING.md | QUICK_START_PRODUCTION.md | API_REFERENCE.md |
 
