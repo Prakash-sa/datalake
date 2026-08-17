@@ -564,6 +564,8 @@ Ship both AppImage and DEB:
 
 Use `electron-updater` with public GitHub Releases for macOS and Windows.
 
+Implementation status: release CI now generates SHA-256 checksums, and the desktop shell has a guarded update-check hook that activates when `electron-updater` is installed in release builds. Remaining work is adding the dependency, signing update artifacts, channel UI, install prompts, and schema-safe update deferral during indexing.
+
 Required behavior:
 
 - Stable and beta channels.

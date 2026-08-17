@@ -36,6 +36,11 @@ jobs:
         run: python -m pip install -r ../backend/requirements.txt pyinstaller
       - name: Build desktop package
         run: npm run dist
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          cd dist
+          find . -type f ! -name "SHA256SUMS" -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v4
         with:

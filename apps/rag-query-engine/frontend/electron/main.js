@@ -5,6 +5,13 @@ const fs = require('fs/promises');
 const net = require('net');
 const path = require('path');
 
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require('electron-updater'));
+} catch {
+  autoUpdater = null;
+}
+
 const DEFAULT_APP_URL = 'http://localhost:3000';
 const APP_PROTOCOL = 'app';
 const isDev = !app.isPackaged;
@@ -323,6 +330,20 @@ function createWindow() {
   window.loadURL(getAppUrl());
 }
 
+function scheduleUpdateChecks() {
+  if (isDev || !autoUpdater || process.env.RAG_ENABLE_UPDATES === 'false') return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.on('error', (error) => {
+    console.error(`Update check failed: ${error.message}`);
+  });
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.error(`Update check failed: ${error.message}`);
+    });
+  }, 15000);
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.exit(0);
@@ -344,6 +365,7 @@ if (!gotLock) {
       console.error(error);
     }
     createWindow();
+    scheduleUpdateChecks();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
