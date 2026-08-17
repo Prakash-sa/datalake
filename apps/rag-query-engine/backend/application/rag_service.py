@@ -37,6 +37,16 @@ class DocumentRAGService:
     MIN_SIMILARITY_SCORE = 0.0
     MAX_QUERY_LENGTH = 1000
     DEFAULT_TIMEOUT = 30
+    DEFAULT_MODEL_PROFILES = {
+        "light": {
+            "llm_model": "qwen3:1.7b",
+            "embedding_model": "qwen3-embedding:0.6b",
+        },
+        "balanced": {
+            "llm_model": "qwen3:4b",
+            "embedding_model": "qwen3-embedding:0.6b",
+        },
+    }
 
     def __init__(
         self,
@@ -170,6 +180,59 @@ class DocumentRAGService:
                 "missing_models": required_models,
                 "error": str(e),
             }
+
+    def list_ollama_models(self) -> dict:
+        """List installed Ollama models and missing required models."""
+        readiness = self._check_ollama()
+        installed_models = readiness.get("installed_models", [])
+        return {
+            "status": readiness.get("status", "error"),
+            "ollama_url": self.ollama_url,
+            "models": [{"name": model} for model in installed_models],
+            "required_models": readiness.get("required_models", []),
+            "missing_models": readiness.get("missing_models", []),
+            "error": readiness.get("error"),
+        }
+
+    def pull_ollama_model(self, name: str) -> dict:
+        """Pull an Ollama model with a non-streaming request."""
+        try:
+            payload = json.dumps({"name": name, "stream": False}).encode("utf-8")
+            request = urllib.request.Request(
+                f"{self.ollama_url.rstrip('/')}/api/pull",
+                data=payload,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=60 * 60) as response:
+                result = json.loads(response.read().decode("utf-8") or "{}")
+            return {"status": "success", "model": name, "result": result}
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+            return {"status": "error", "model": name, "error": str(e)}
+
+    def get_settings(self) -> dict:
+        """Return persisted runtime settings with active defaults."""
+        stored = self.catalog.get_setting("runtime", {})
+        return {
+            "ollama_url": stored.get("ollama_url", self.ollama_url),
+            "embedding_model": stored.get("embedding_model", self.embedding_model),
+            "llm_model": stored.get("llm_model", self.llm_model),
+            "temperature": stored.get("temperature", self.temperature),
+            "model_profiles": self.DEFAULT_MODEL_PROFILES,
+        }
+
+    def update_settings(self, settings: Dict[str, Any]) -> dict:
+        """Persist runtime settings. Model changes apply on next backend restart."""
+        current = self.get_settings()
+        for key in ("ollama_url", "embedding_model", "llm_model", "temperature"):
+            if settings.get(key) is not None:
+                current[key] = settings[key]
+        self.catalog.set_setting("runtime", current)
+        return {
+            "status": "success",
+            "settings": current,
+            "restart_required": True,
+        }
 
     def index_documents(self, documents: List[dict]) -> dict:
         """Index documents into the vector store."""

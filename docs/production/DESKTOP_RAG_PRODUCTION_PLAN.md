@@ -140,7 +140,7 @@ The application should:
 - Show model download size before pulling.
 - Stream model-pull progress.
 - Allow retry, cancellation, and endpoint reconfiguration.
-- Store the selected model names and resolved digests.
+- Store the selected model names through local settings; digest capture remains a release-blocking follow-up.
 - Detect when a model has changed and an index needs rebuilding.
 - Support preinstalled models for offline environments.
 

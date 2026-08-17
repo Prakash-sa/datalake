@@ -51,6 +51,21 @@ class FileIngestRequest(BaseModel):
     force_reindex: bool = Field(False, description="Re-parse and re-index duplicate files")
 
 
+class ModelPullRequest(BaseModel):
+    """Request model for pulling an Ollama model."""
+
+    name: str = Field(..., min_length=1, max_length=200)
+
+
+class SettingsUpdateRequest(BaseModel):
+    """Runtime settings persisted locally."""
+
+    ollama_url: Optional[str] = Field(None, min_length=1, max_length=500)
+    embedding_model: Optional[str] = Field(None, min_length=1, max_length=200)
+    llm_model: Optional[str] = Field(None, min_length=1, max_length=200)
+    temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+
 class EvalCase(BaseModel):
     """Single deterministic eval case for retrieval and answer grounding."""
 

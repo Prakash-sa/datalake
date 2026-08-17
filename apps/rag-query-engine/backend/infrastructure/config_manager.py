@@ -27,10 +27,10 @@ class ConfigManager:
     CORS_CACHE_MAX_AGE: int = int(os.getenv("CORS_CACHE_MAX_AGE", "600"))
 
     # RAG Engine Settings
-    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "mistral")
-    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
+    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "qwen3-embedding:0.6b")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen3:4b")
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
     CHROMA_PATH: str = os.getenv("CHROMA_PATH", "./chroma_db")
     APP_DATA_DIR: str = os.getenv("APP_DATA_DIR", ".")
     APP_DB_PATH: str = os.getenv("APP_DB_PATH", os.path.join(APP_DATA_DIR, "app.db"))

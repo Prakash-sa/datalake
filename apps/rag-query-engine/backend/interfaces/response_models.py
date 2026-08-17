@@ -76,6 +76,25 @@ class IngestResponse(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+class ModelListResponse(BaseModel):
+    """Ollama model listing response."""
+
+    status: str
+    ollama_url: str
+    models: List[Dict[str, Any]]
+    required_models: List[str]
+    missing_models: List[str]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class SettingsResponse(BaseModel):
+    """Runtime settings response."""
+
+    status: str
+    settings: Dict[str, Any]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
 class QueryResponse(BaseModel):
     """RAG query response."""
 

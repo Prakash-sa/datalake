@@ -11,12 +11,16 @@ from interfaces import (
     DocumentSearchRequest,
     DocumentQueryRequest,
     FileIngestRequest,
+    ModelPullRequest,
+    SettingsUpdateRequest,
     EvalRequest,
     HealthResponse,
     StatsResponse,
     SearchResponse,
     DocumentCatalogResponse,
     IngestResponse,
+    ModelListResponse,
+    SettingsResponse,
     QueryResponse,
     ReadinessResponse,
     EvalResponse,
@@ -60,6 +64,46 @@ async def get_readiness():
         raise HTTPException(status_code=500, detail="RAG service not initialized")
 
     return rag_service.get_readiness()
+
+
+@router.get("/models", response_model=ModelListResponse)
+async def list_models():
+    """List installed and required Ollama models."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    return rag_service.list_ollama_models()
+
+
+@router.post("/models/pull")
+async def pull_model(request: ModelPullRequest):
+    """Pull a local Ollama model."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    result = rag_service.pull_ollama_model(request.name)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=502, detail=result.get("error"))
+    return result
+
+
+@router.get("/settings", response_model=SettingsResponse)
+async def get_settings():
+    """Return local runtime settings."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    return {"status": "success", "settings": rag_service.get_settings()}
+
+
+@router.post("/settings", response_model=SettingsResponse)
+async def update_settings(request: SettingsUpdateRequest):
+    """Persist local runtime settings."""
+    if not rag_service:
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+
+    result = rag_service.update_settings(request.dict(exclude_none=True))
+    return {"status": result["status"], "settings": result["settings"]}
 
 
 @router.post("/documents/index")

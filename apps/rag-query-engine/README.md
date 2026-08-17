@@ -27,6 +27,7 @@ SQL query execution engine for Apache Iceberg tables in Trino. This module provi
 - **Open Source**: MIT license, contribution guide, security policy, and desktop build packaging
 - **Desktop App**: Electron wrapper for macOS, Windows, and Linux distribution
 - **Third-Party Notices**: dependency and model license tracking starts in `../THIRD_PARTY_NOTICES.md`
+- **Model Setup**: Ollama model listing, pulling, and runtime settings are exposed through local API endpoints
 
 ## Architecture
 
@@ -270,6 +271,18 @@ Supported first-release formats are TXT, Markdown, HTML, DOCX, and PDF. The back
 GET /documents
 DELETE /documents/{document_id}
 ```
+
+### 9. **Local Model Setup**
+```bash
+GET /models
+POST /models/pull
+POST /settings
+```
+
+Default local profile:
+- generation: `qwen3:4b`
+- embeddings: `qwen3-embedding:0.6b`
+- Ollama URL: `http://127.0.0.1:11434`
 
 ## Example Queries
 
