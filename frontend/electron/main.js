@@ -230,6 +230,9 @@ function stopBackend() {
   }, 5000).unref();
 }
 
+// streamId -> AbortController for in-flight streaming queries.
+const activeStreams = new Map();
+
 function registerApiProxy() {
   ipcMain.handle('api:request', async (event, request) => {
     if (!isTrustedSender(event)) {
@@ -266,6 +269,101 @@ function registerApiProxy() {
       data,
       error: response.ok ? undefined : data?.detail || text || 'API request failed',
     };
+  });
+
+  // Streaming queries cannot use api:request, which resolves only once the
+  // whole response is buffered. Main owns the connection and the backend token;
+  // the renderer receives frames through a per-stream channel it never names.
+  ipcMain.handle('api:streamQuery', async (event, request) => {
+    if (!isTrustedSender(event)) {
+      return { ok: false, error: 'Untrusted IPC sender' };
+    }
+
+    const query = request?.query;
+    if (typeof query !== 'string' || !query.trim()) {
+      return { ok: false, error: 'Invalid query' };
+    }
+
+    const streamId = crypto.randomUUID();
+    const channel = `api:stream:${streamId}`;
+    const controller = new AbortController();
+    activeStreams.set(streamId, controller);
+
+    const send = (frame) => {
+      // The window can close mid-stream; sending to a destroyed frame throws.
+      if (!event.sender.isDestroyed()) event.sender.send(channel, frame);
+    };
+
+    (async () => {
+      try {
+        const response = await fetch(`${backendBaseUrl}/query/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+            ...(backendToken ? { Authorization: `Bearer ${backendToken}` } : {}),
+          },
+          body: JSON.stringify({
+            query,
+            k: typeof request.k === 'number' ? request.k : 5,
+            min_score: typeof request.minScore === 'number' ? request.minScore : 0,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          send({ event: 'error', code: 'retrieval_failed', error: `Backend returned ${response.status}` });
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // SSE frames are separated by a blank line; a chunk may split one.
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary !== -1) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            for (const line of frame.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                send(JSON.parse(line.slice(6)));
+              } catch {
+                // Ignore a frame we cannot parse rather than killing the stream.
+              }
+            }
+            boundary = buffer.indexOf('\n\n');
+          }
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          send({ event: 'error', code: 'cancelled', error: 'Generation cancelled' });
+        } else {
+          send({ event: 'error', code: 'internal_error', error: error.message });
+        }
+      } finally {
+        activeStreams.delete(streamId);
+        send({ event: 'closed' });
+      }
+    })();
+
+    return { ok: true, streamId };
+  });
+
+  ipcMain.handle('api:cancelStream', (event, streamId) => {
+    if (!isTrustedSender(event) || typeof streamId !== 'string') return false;
+    const controller = activeStreams.get(streamId);
+    if (!controller) return false;
+    controller.abort();
+    activeStreams.delete(streamId);
+    return true;
   });
 
   ipcMain.handle('files:selectDocuments', async (event) => {

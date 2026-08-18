@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Brain,
@@ -13,7 +13,10 @@ import {
   Send,
   Sparkles,
   Upload,
+  XCircle,
 } from 'lucide-react';
+import { streamQuery } from '@/lib/streamQuery';
+import type { CancelStream, CitationReport, StreamEvent } from '@/types/electron';
 
 type RetrievedDocument = {
   id: string;
@@ -97,6 +100,13 @@ export default function DocumentRAGInterface() {
   const [error, setError] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [answer, setAnswer] = useState('');
+  const [sources, setSources] = useState<RetrievedDocument[]>([]);
+  const [citations, setCitations] = useState<CitationReport | null>(null);
+  const [truncatedCount, setTruncatedCount] = useState(0);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState<number | null>(null);
+  const cancelRef = useRef<CancelStream | null>(null);
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
@@ -127,28 +137,72 @@ export default function DocumentRAGInterface() {
     };
   };
 
+  const handleStreamEvent = useCallback((event: StreamEvent) => {
+    switch (event.event) {
+      case 'sources':
+        setSources(event.documents ?? []);
+        setTruncatedCount(event.truncated_document_count ?? 0);
+        break;
+      case 'token':
+        // Appended per frame so the answer renders as it is generated.
+        setAnswer((current) => current + event.text);
+        break;
+      case 'done':
+        setLoading(false);
+        cancelRef.current = null;
+        setCitations(event.citations ?? null);
+        setElapsed(event.processing_time_seconds ?? null);
+        if (event.retrieved_documents) setSources(event.retrieved_documents);
+        // A no-results run carries its message in `answer`.
+        if (event.answer) setAnswer(event.answer);
+        setResults({ status: event.status === 'no_results' ? 'no_results' : 'success', query });
+        break;
+      case 'error':
+        setLoading(false);
+        cancelRef.current = null;
+        setErrorCode(event.code);
+        setError(event.error);
+        break;
+    }
+  }, [query]);
+
+  const handleCancel = () => {
+    cancelRef.current?.();
+    cancelRef.current = null;
+    setLoading(false);
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!query.trim()) return;
 
+    // Abandon any in-flight generation before starting another.
+    cancelRef.current?.();
+
     setLoading(true);
     setError(null);
+    setErrorCode(null);
+    setAnswer('');
+    setSources([]);
+    setCitations(null);
+    setTruncatedCount(0);
+    setElapsed(null);
+    setResults(null);
 
     try {
-      const body = { query, k: 5, min_score: 0 };
-      const data = await apiRequest<QueryResult>('/query', 'POST', body);
-
-      if (!data.ok || !data.data) {
-        throw new Error(data.error || 'Query failed');
-      }
-
-      setResults(data.data);
+      cancelRef.current = await streamQuery(
+        { query, k: 5, minScore: 0 },
+        handleStreamEvent,
+        apiUrl,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process query');
-    } finally {
       setLoading(false);
+      setError(err instanceof Error ? err.message : 'Failed to process query');
     }
   };
+
+  // Cancel an in-flight generation if the view unmounts.
+  useEffect(() => () => cancelRef.current?.(), []);
 
   const handleImport = async () => {
     const selectDocuments = window.desktop?.selectDocuments;
@@ -180,7 +234,7 @@ export default function DocumentRAGInterface() {
     }
   };
 
-  const documents = results?.retrieved_documents ?? [];
+  const documents = sources;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -258,13 +312,35 @@ export default function DocumentRAGInterface() {
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Search
               </button>
+              {loading && (
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Stop
+                </button>
+              )}
             </div>
           </form>
 
           {error && (
             <div className="flex gap-3 rounded-md border border-red-800 bg-red-950/70 p-4">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
-              <p className="text-sm text-red-100">{error}</p>
+              <div className="text-sm text-red-100">
+                <p>{error}</p>
+                {errorCode && (
+                  <p className="mt-1 text-xs text-red-300/80">
+                    <code>{errorCode}</code>
+                    {errorCode === 'model_unavailable' &&
+                      ' — start Ollama, then pull the configured models.'}
+                    {errorCode === 'generation_timeout' &&
+                      ' — the model took too long; try a smaller profile.'}
+                    {errorCode === 'cancelled' && ' — generation stopped.'}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -275,21 +351,38 @@ export default function DocumentRAGInterface() {
             </div>
           )}
 
-          {results?.status === 'success' && (
+          {(answer || loading) && results?.status !== 'no_results' && (
             <div className="rounded-md border border-zinc-800 bg-zinc-900 p-5">
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
                   <Sparkles className="h-5 w-5 text-cyan-300" />
                   Answer
+                  {loading && <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />}
                 </h2>
-                <div className="flex gap-2 text-xs text-zinc-400">
-                  <span>{results.document_count ?? documents.length} sources</span>
-                  <span>{results.processing_time_seconds ?? 0}s</span>
+                <div className="flex flex-wrap gap-2 text-xs text-zinc-400">
+                  <span>{documents.length} sources</span>
+                  {citations && <span>{citations.citation_count} citations</span>}
+                  {truncatedCount > 0 && (
+                    <span title="Dropped to fit the context token budget">
+                      {truncatedCount} truncated
+                    </span>
+                  )}
+                  {elapsed !== null && <span>{elapsed}s</span>}
                 </div>
               </div>
               <p className="whitespace-pre-wrap rounded-md bg-zinc-950 p-4 text-sm leading-7 text-zinc-100">
-                {results.answer}
+                {answer}
+                {loading && <span className="ml-0.5 animate-pulse text-cyan-300">▌</span>}
               </p>
+              {citations && !citations.valid && (
+                <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-800 bg-amber-950/40 p-3 text-xs text-amber-100">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
+                  This answer cited {citations.invalid_indices.length} source
+                  {citations.invalid_indices.length === 1 ? '' : 's'} that were not
+                  retrieved ([S{citations.invalid_indices.join('], [S')}]). Treat the
+                  affected claims as unverified.
+                </p>
+              )}
             </div>
           )}
 
