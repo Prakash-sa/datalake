@@ -79,6 +79,10 @@ class EvalCase(BaseModel):
     )
     min_documents: int = Field(1, ge=0, le=100)
     min_relevance: float = Field(0.0, ge=0.0, le=1.0)
+    relevant_chunk_ids: list[str] | None = Field(
+        default=None,
+        description="Ground-truth chunk ids, enabling retrieval metrics for this case",
+    )
 
 
 class EvalRequest(BaseModel):

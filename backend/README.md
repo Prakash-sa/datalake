@@ -78,6 +78,7 @@ use.
 | DELETE | `/documents/{id}`    | Delete a document and its chunks         |
 | POST   | `/documents/search`  | Hybrid dense + lexical search            |
 | POST   | `/query`             | Full RAG pipeline with citations         |
+| POST   | `/query/stream`      | Same pipeline, streamed as SSE           |
 | POST   | `/eval`              | Deterministic release-gating evals       |
 
 Interactive docs are served at `/docs` only when `DEBUG=true`.

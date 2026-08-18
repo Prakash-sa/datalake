@@ -44,7 +44,9 @@ Use cases and orchestration.
 | `ingestion_service.py` | File parsing, normalisation, and chunking                  |
 | `retrieval.py`         | Reciprocal-rank fusion — pure functions, no I/O            |
 | `prompts.py`           | Versioned prompt templates and context rendering           |
-| `eval_service.py`      | Deterministic release-gating checks                        |
+| `eval_service.py`      | Deterministic release-gating checks and retrieval metrics  |
+| `citations.py`         | Citation parsing and range validation - pure functions     |
+| `metrics.py`           | Hit rate, recall, MRR, nDCG - pure functions                |
 
 `retrieval.py` and `prompts.py` hold no state, so ranking and prompt behaviour
 are testable without a running Ollama or a populated index.
@@ -68,8 +70,8 @@ reshaping the core model.
 ### `api/routes/`
 
 One module per endpoint group: `health`, `models`, `settings`, `documents`,
-`search`, `evals`. Each exports a `router`; `routes/__init__.py` aggregates them
-into a single `api_router`.
+`search`, `stream`, `evals`. Each exports a `router`; `routes/__init__.py`
+aggregates them into a single `api_router`.
 
 Handlers stay thin — validate, delegate, map results to HTTP status codes. Logic
 that needs testing belongs in `application/`.
@@ -90,6 +92,27 @@ There are no module-level singletons. Wiring happens explicitly:
 
 Middleware order matters: CORS is registered last so it wraps the auth
 middleware, letting preflight `OPTIONS` requests through before token checks.
+
+## Streaming
+
+`POST /query/stream` runs the same pipeline as `/query` but emits server-sent
+events:
+
+```text
+{"event":"sources","documents":[...],"truncated_document_count":n}
+{"event":"token","text":"..."}                     (repeated)
+{"event":"done","answer":"...","citations":{...}}
+{"event":"error","code":"model_unavailable",...}   (terminal)
+```
+
+Sources arrive before the first token so the UI can render citations while the
+answer streams. Disconnecting sets a cancellation event that the Ollama client
+checks between chunks, so abandoning a request stops generation rather than
+leaving the model producing an answer nobody will read.
+
+Failures carry a structured `code` from `rag_backend.errors`, separating
+"retrieval failed" from "model unavailable" from "no relevant evidence", and
+flagging whether the user can act on it.
 
 ## Entry points
 

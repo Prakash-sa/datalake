@@ -78,3 +78,96 @@ def test_no_documents_yields_zero_max_relevance():
     graded = grade_case(case, _result("answer", []))
 
     assert graded["max_relevance"] == 0.0
+
+
+class _StubRag:
+    """Returns a canned query result and records the eval run."""
+
+    def __init__(self, result: dict):
+        self._result = result
+        self.catalog = self
+        self.recorded: list[dict] = []
+
+    def query_documents(self, user_query, k=5, min_score=None):
+        return self._result
+
+    def record_eval_run(self, run_id, status, request, result):
+        self.recorded.append({"status": status, "result": result})
+
+
+def _case(**kwargs) -> EvalCase:
+    return EvalCase(id=kwargs.pop("id", "c1"), query=kwargs.pop("query", "q"), **kwargs)
+
+
+def test_invalid_citations_fail_the_case():
+    # A hallucinated citation must not pass a release gate.
+    graded = grade_case(
+        _case(min_documents=1),
+        {
+            "status": "success",
+            "answer": "Answer [S9].",
+            "retrieved_documents": [{"id": "c1", "relevance_score": 0.9}],
+            "citations": {"valid": False, "citation_count": 0},
+        },
+    )
+
+    assert graded["citations_valid"] is False
+    assert graded["passed"] is False
+
+
+def test_graded_case_reports_retrieved_chunk_ids():
+    graded = grade_case(
+        _case(min_documents=1),
+        {
+            "status": "success",
+            "answer": "ok [S1]",
+            "retrieved_documents": [
+                {"id": "a", "relevance_score": 0.9},
+                {"id": "b", "relevance_score": 0.5},
+            ],
+        },
+    )
+
+    assert graded["retrieved_chunk_ids"] == ["a", "b"]
+
+
+def test_retrieval_metrics_are_computed_for_cases_with_ground_truth():
+    from rag_backend.application.eval_service import EvalService
+
+    rag = _StubRag(
+        {
+            "status": "success",
+            "answer": "ok [S1]",
+            "retrieved_documents": [
+                {"id": "a", "relevance_score": 0.9},
+                {"id": "z", "relevance_score": 0.4},
+            ],
+        }
+    )
+
+    response = EvalService(rag).run([_case(relevant_chunk_ids=["a"])], k=2)
+
+    metrics = response["retrieval_metrics"]
+    assert metrics["hit_rate_at_2"] == 1.0
+    assert metrics["mrr"] == 1.0
+    assert metrics["query_count"] == 1.0
+
+
+def test_metrics_are_omitted_when_no_case_declares_ground_truth():
+    from rag_backend.application.eval_service import EvalService
+
+    rag = _StubRag({"status": "success", "answer": "ok", "retrieved_documents": [{"id": "a"}]})
+
+    response = EvalService(rag).run([_case()], k=5)
+
+    assert response["retrieval_metrics"] == {}
+
+
+def test_run_is_persisted_with_its_pass_status():
+    from rag_backend.application.eval_service import EvalService
+
+    rag = _StubRag({"status": "success", "answer": "ok", "retrieved_documents": [{"id": "a"}]})
+
+    EvalService(rag).run([_case(min_documents=99)], k=5)
+
+    assert rag.recorded[0]["status"] == "failed"

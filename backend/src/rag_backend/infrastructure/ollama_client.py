@@ -8,14 +8,28 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from typing import Any
+
+from rag_backend.errors import (
+    ErrorCode,
+    GenerationError,
+    GenerationTimeoutError,
+    ModelUnavailableError,
+    RagError,
+    classify_ollama_exception,
+)
 
 logger = logging.getLogger(__name__)
 
 TAGS_TIMEOUT_SECONDS = 3
 PULL_TIMEOUT_SECONDS = 60 * 60
+# Wall-clock ceiling for a whole generation. The plan requires real request
+# timeouts rather than the unbounded waits langchain's invoke() performs.
+GENERATION_TIMEOUT_SECONDS = 120
 
 
 class OllamaClient:
@@ -91,3 +105,111 @@ class OllamaClient:
             return {"status": "success", "model": name, "result": result}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
             return {"status": "error", "model": name, "error": str(e)}
+
+    # -- Generation -----------------------------------------------------------
+
+    def _generation_payload(
+        self, prompt: str, model: str, temperature: float, stream: bool
+    ) -> bytes:
+        return json.dumps(
+            {
+                "model": model,
+                "prompt": prompt,
+                "stream": stream,
+                "options": {"temperature": temperature},
+            }
+        ).encode("utf-8")
+
+    def _generation_request(self, payload: bytes) -> urllib.request.Request:
+        return urllib.request.Request(
+            f"{self.base_url}/api/generate",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/x-ndjson",
+            },
+            method="POST",
+        )
+
+    @staticmethod
+    def _as_rag_error(exc: Exception) -> RagError:
+        """Translate a transport exception into a structured error."""
+        code = classify_ollama_exception(exc)
+        message = str(exc)
+        if code is ErrorCode.GENERATION_TIMEOUT:
+            return GenerationTimeoutError("Generation timed out", code=code)
+        if code is ErrorCode.MODEL_UNAVAILABLE:
+            return ModelUnavailableError(message, code=code)
+        return GenerationError(message, code=code)
+
+    def generate(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float = 0.1,
+        timeout: float = GENERATION_TIMEOUT_SECONDS,
+    ) -> str:
+        """Generate a complete answer, raising a structured error on failure."""
+        try:
+            request = self._generation_request(
+                self._generation_payload(prompt, model, temperature, stream=False)
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8") or "{}")
+        except Exception as e:
+            raise self._as_rag_error(e) from e
+
+        if payload.get("error"):
+            raise ModelUnavailableError(str(payload["error"]), code=ErrorCode.MODEL_UNAVAILABLE)
+        return payload.get("response", "")
+
+    def stream_generate(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float = 0.1,
+        timeout: float = GENERATION_TIMEOUT_SECONDS,
+        cancel: threading.Event | None = None,
+    ) -> Iterator[str]:
+        """Yield generation tokens as they arrive.
+
+        ``cancel`` is checked between chunks, so a caller can abandon a
+        generation without waiting for the model to finish. The connection is
+        closed on exit, which also stops Ollama producing further tokens.
+        """
+        try:
+            request = self._generation_request(
+                self._generation_payload(prompt, model, temperature, stream=True)
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                for raw_line in response:
+                    if cancel is not None and cancel.is_set():
+                        logger.info("Generation cancelled by caller")
+                        return
+
+                    line = raw_line.decode("utf-8").strip()
+                    if not line:
+                        continue
+
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        # Ollama emits one JSON object per line; skip anything
+                        # malformed rather than failing a partial answer.
+                        logger.debug("Skipping malformed generation chunk")
+                        continue
+
+                    if chunk.get("error"):
+                        raise ModelUnavailableError(
+                            str(chunk["error"]), code=ErrorCode.MODEL_UNAVAILABLE
+                        )
+
+                    token = chunk.get("response", "")
+                    if token:
+                        yield token
+                    if chunk.get("done"):
+                        return
+        except RagError:
+            raise
+        except Exception as e:
+            raise self._as_rag_error(e) from e

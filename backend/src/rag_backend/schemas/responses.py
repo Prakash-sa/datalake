@@ -146,6 +146,9 @@ class EvalCaseResult(BaseModel):
     max_relevance: float
     missing_terms: list[str]
     processing_time_seconds: float
+    retrieved_chunk_ids: list[str] = []
+    citation_count: int = 0
+    citations_valid: bool = True
 
 
 class EvalResponse(BaseModel):
@@ -156,4 +159,6 @@ class EvalResponse(BaseModel):
     total_cases: int
     passed_cases: int
     results: list[EvalCaseResult]
+    # Populated only for cases that declare relevant_chunk_ids.
+    retrieval_metrics: dict[str, float] = {}
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())

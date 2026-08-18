@@ -75,3 +75,37 @@ def test_openapi_schema_builds(client):
     paths = response.json()["paths"]
     for expected in ("/health", "/stats", "/documents", "/documents/search", "/query", "/eval"):
         assert expected in paths
+
+
+def _sse_events(body: str) -> list[dict]:
+    import json
+
+    return [
+        json.loads(line[len("data: ") :]) for line in body.splitlines() if line.startswith("data: ")
+    ]
+
+
+def test_stream_endpoint_emits_sse_frames(client, stub_rag_service):
+    def fake_stream(user_query, k=5, min_score=None, cancel=None):
+        yield {"event": "sources", "documents": [], "truncated_document_count": 0}
+        yield {"event": "token", "text": "hi"}
+        yield {"event": "done", "status": "success", "answer": "hi"}
+
+    stub_rag_service.stream_query_documents = fake_stream
+
+    response = client.post("/query/stream", json={"query": "rag", "k": 3})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = _sse_events(response.text)
+    assert [e["event"] for e in events] == ["sources", "token", "done"]
+
+
+def test_stream_endpoint_validates_its_request(client):
+    response = client.post("/query/stream", json={"query": "", "k": 3})
+
+    assert response.status_code == 422
+
+
+def test_stream_endpoint_is_in_the_openapi_schema(client):
+    assert "/query/stream" in client.get("/openapi.json").json()["paths"]

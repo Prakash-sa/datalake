@@ -12,6 +12,8 @@ import logging
 import platform
 import shutil
 import sys
+import threading
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -32,7 +34,14 @@ from rag_backend.application.retrieval import (
     candidate_pool_size,
     fuse_results,
 )
-from rag_backend.errors import classify_ollama_exception
+from rag_backend.errors import (
+    CancelledError,
+    ErrorCode,
+    RagError,
+    RetrievalError,
+    ValidationError,
+    classify_ollama_exception,
+)
 from rag_backend.infrastructure.catalog_store import CatalogStore
 from rag_backend.infrastructure.ollama_client import OllamaClient
 from rag_backend.infrastructure.vector_store import ChromaVectorStore, normalize_metadata
@@ -380,6 +389,126 @@ class DocumentRAGService:
             self.stats["errors"] += 1
             self._record_query_trace(user_query, [], "error", {}, error_code="query_failed")
             return {"status": "error", "query": user_query, "error": str(e)}
+
+    def stream_query_documents(
+        self,
+        user_query: str,
+        k: int = 5,
+        min_score: float | None = None,
+        cancel: threading.Event | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Run the RAG pipeline, yielding events as generation progresses.
+
+        Event shapes, in order:
+          {"event": "sources", "documents": [...], "truncated_document_count": n}
+          {"event": "token",  "text": "..."}                      (repeated)
+          {"event": "done",   "answer": "...", "citations": {...}}
+          {"event": "error",  "code": "...", "error": "..."}      (terminal)
+
+        Sources are emitted before the first token so the UI can render
+        citations while the answer streams in.
+        """
+        start_time = datetime.now()
+
+        try:
+            if not user_query or len(user_query) > self.MAX_QUERY_LENGTH:
+                raise ValidationError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
+            relevant_docs = self.search_documents(user_query, k=k, min_score=min_score)
+        except ValidationError as e:
+            self.stats["errors"] += 1
+            self._record_query_trace(user_query, [], "error", {}, error_code=str(e.code))
+            yield {"event": "error", **e.to_dict()}
+            return
+        except Exception as e:
+            logger.error("Retrieval failed: %s", e, exc_info=True)
+            self.stats["errors"] += 1
+            error = RetrievalError(str(e))
+            self._record_query_trace(user_query, [], "error", {}, error_code=str(error.code))
+            yield {"event": "error", **error.to_dict()}
+            return
+
+        if not relevant_docs:
+            elapsed = (datetime.now() - start_time).total_seconds()
+            self._record_query_trace(
+                user_query, [], "no_results", {"total_seconds": round(elapsed, 3)}
+            )
+            yield {
+                "event": "done",
+                "status": "no_results",
+                "code": str(ErrorCode.NO_RELEVANT_EVIDENCE),
+                "answer": "No relevant documents found in the knowledge base.",
+                "retrieved_documents": [],
+                "citations": validate_citations("", []),
+                "processing_time_seconds": round(elapsed, 2),
+            }
+            return
+
+        context_docs = select_context_documents(
+            relevant_docs, token_budget=self.context_token_budget
+        )
+        yield {
+            "event": "sources",
+            "documents": context_docs,
+            "truncated_document_count": len(relevant_docs) - len(context_docs),
+        }
+
+        prompt = GROUNDED_ANSWER_TEMPLATE.format(
+            context=build_context(context_docs), query=user_query
+        )
+
+        parts: list[str] = []
+        try:
+            for token in self.ollama.stream_generate(
+                prompt,
+                model=self.llm_model,
+                temperature=self.temperature,
+                cancel=cancel,
+            ):
+                parts.append(token)
+                yield {"event": "token", "text": token}
+        except RagError as e:
+            self.stats["errors"] += 1
+            self._record_query_trace(user_query, context_docs, "error", {}, error_code=str(e.code))
+            yield {"event": "error", **e.to_dict()}
+            return
+
+        elapsed = (datetime.now() - start_time).total_seconds()
+
+        if cancel is not None and cancel.is_set():
+            self._record_query_trace(
+                user_query,
+                context_docs,
+                "cancelled",
+                {"total_seconds": round(elapsed, 3)},
+                error_code=str(ErrorCode.CANCELLED),
+            )
+            yield {
+                "event": "error",
+                **CancelledError("Generation cancelled").to_dict(),
+            }
+            return
+
+        answer = "".join(parts).strip()
+        citations = validate_citations(answer, context_docs)
+        self.stats["queries_processed"] += 1
+        self._record_query_trace(
+            user_query,
+            context_docs,
+            "success",
+            {"total_seconds": round(elapsed, 3)},
+            citation_count=citations["citation_count"],
+        )
+
+        yield {
+            "event": "done",
+            "status": "success",
+            "answer": answer,
+            "retrieved_documents": context_docs,
+            "document_count": len(context_docs),
+            "citations": citations,
+            "truncated_document_count": len(relevant_docs) - len(context_docs),
+            "processing_time_seconds": round(elapsed, 2),
+        }
 
     def _record_query_trace(
         self,
