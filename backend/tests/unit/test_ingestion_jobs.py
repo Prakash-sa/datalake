@@ -402,3 +402,40 @@ def test_matching_dimensions_do_not_trigger_a_rebuild(jobs, rag, doc):
     # No fingerprint, but the stored width matches the provider, so there is
     # nothing to rebuild.
     assert rag.check_index_compatibility()["rebuild_required"] is False
+
+
+def test_empty_but_width_constrained_collection_recovers_automatically(jobs, rag, doc):
+    # Chroma keeps a collection's width after every row is deleted, so an empty
+    # index can still reject a new model's vectors. Nothing is at stake, so this
+    # must resolve itself rather than demanding a rebuild.
+    rag.vector_store.upsert(["seed"], ["x"], [{"id": "seed"}], [[0.1] * 1024])
+    rag.vector_store.delete(["seed"])
+    assert rag.vector_store.count() == 0
+
+    result = jobs.process_job(jobs.enqueue(str(doc))["id"])
+
+    assert result["status"] == JobStatus.COMPLETE
+    assert rag.vector_store.count() >= 1
+
+
+def test_a_populated_mismatched_index_is_never_silently_discarded(jobs, rag, doc):
+    # Auto-recovery must not extend to an index holding real data.
+    rag.vector_store.upsert(["legacy"], ["old"], [{"id": "legacy"}], [[0.1] * 1024])
+
+    result = jobs.process_job(jobs.enqueue(str(doc))["id"])
+
+    assert result["status"] == JobStatus.FAILED
+    assert result["error_code"] == "index_model_mismatch"
+    assert rag.vector_store.count() == 1
+
+
+def test_the_mismatch_error_names_both_widths(rag):
+    from rag_backend.errors import IndexModelMismatchError
+
+    rag.vector_store.upsert(["legacy"], ["old"], [{"id": "legacy"}], [[0.1] * 1024])
+
+    with pytest.raises(IndexModelMismatchError) as excinfo:
+        rag.vector_store.upsert(["new"], ["y"], [{"id": "new"}], [[0.2] * 8])
+
+    assert excinfo.value.details == {"expected_dimensions": 1024, "received_dimensions": 8}
+    assert excinfo.value.actionable is True

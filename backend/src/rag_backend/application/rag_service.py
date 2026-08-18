@@ -42,6 +42,7 @@ from rag_backend.domain.fingerprint import build_fingerprint, compare
 from rag_backend.errors import (
     CancelledError,
     ErrorCode,
+    IndexModelMismatchError,
     RagError,
     RetrievalError,
     ValidationError,
@@ -216,23 +217,47 @@ class DocumentRAGService:
                 stored_width = self.vector_store.dimension()
                 new_width = len(embeddings[0])
                 if stored_width is not None and stored_width != new_width:
-                    logger.warning(
-                        "Index holds %d-dim vectors but the model produces %d",
-                        stored_width,
-                        new_width,
-                    )
-                    self.stats["errors"] += 1
-                    return {
-                        "status": "error",
-                        "code": str(ErrorCode.INDEX_MODEL_MISMATCH),
-                        "error": (
-                            f"The existing index holds {stored_width}-dimension vectors "
-                            f"but the current embedding model produces {new_width}. "
-                            "Rebuild the index to continue."
-                        ),
-                    }
+                    if self.vector_store.count() == 0:
+                        # The collection is empty but still carries the width it
+                        # was created with, so nothing is lost by recreating it.
+                        # Requiring a manual rebuild here would be friction with
+                        # no data at stake.
+                        logger.info(
+                            "Recreating an empty %d-dim collection for %d-dim vectors",
+                            stored_width,
+                            new_width,
+                        )
+                        self.reset_index()
+                    else:
+                        logger.warning(
+                            "Index holds %d-dim vectors but the model produces %d",
+                            stored_width,
+                            new_width,
+                        )
+                        self.stats["errors"] += 1
+                        return {
+                            "status": "error",
+                            "code": str(ErrorCode.INDEX_MODEL_MISMATCH),
+                            "error": (
+                                f"The existing index holds {stored_width}-dimension "
+                                f"vectors but the current embedding model produces "
+                                f"{new_width}. Rebuild the index to continue."
+                            ),
+                        }
 
-            self.vector_store.upsert(ids, contents, metadatas, embeddings)
+            try:
+                self.vector_store.upsert(ids, contents, metadatas, embeddings)
+            except IndexModelMismatchError as mismatch:
+                if self.vector_store.count() > 0:
+                    self.stats["errors"] += 1
+                    return {"status": "error", **mismatch.to_dict()}
+                # An empty collection still carries the width it was created
+                # with. Nothing is at stake, so adopt the new one and retry once
+                # rather than making the user request a rebuild.
+                logger.info("Recreating an empty collection with a new vector width")
+                self.reset_index()
+                self.vector_store.upsert(ids, contents, metadatas, embeddings)
+
             self.stats["documents_indexed"] += len(ids)
             if ids:
                 # Stamp the index so a later model change is detectable.

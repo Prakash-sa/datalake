@@ -184,8 +184,17 @@ collection has to be recreated. Indexing therefore checks compatibility before
 embedding and refuses with `index_model_mismatch` and a remedy, rather than
 letting a dimension error surface from inside the driver.
 
-Compatibility is decided from the vectors themselves, not only from the recorded
-fingerprint. An index written before fingerprints existed has none to compare
+Chroma keeps a collection's width in the collection record, so the constraint
+outlives the rows: deleting every embedding leaves an empty collection that still
+rejects a different width, and the declared value is not reliably readable before
+a write across versions. The driver's own rejection is therefore the
+authoritative signal. `upsert` translates it into `IndexModelMismatchError`
+carrying both widths, and the service decides what to do: an empty collection is
+recreated and the write retried, since nothing is at stake, while a populated one
+is refused so real data is never silently discarded.
+
+Compatibility is also decided from the vectors themselves, not only from the
+recorded fingerprint. An index written before fingerprints existed has none to compare
 against, which is the ordinary upgrade case, and a provider may not know its own
 width until it has embedded once. The stored collection is therefore measured
 directly, and the vectors about to be written are checked against it immediately

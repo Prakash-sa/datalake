@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import chromadb
 
+from rag_backend.errors import IndexModelMismatchError
+
 logger = logging.getLogger(__name__)
+
+# Chroma reports a width conflict only when the write is attempted, and the
+# declared width is not reliably readable beforehand across versions. The
+# message is therefore the authoritative signal.
+_DIMENSION_ERROR = re.compile(
+    r"expecting embedding with dimension of (\d+), got (\d+)", re.IGNORECASE
+)
 
 COLLECTION_NAME = "documents"
 # Cosine distance keeps `similarity = 1 - distance` in the [0, 1] range.
@@ -100,12 +110,27 @@ class ChromaVectorStore:
             return
         # Chroma's stubs describe narrower numpy-flavoured types than the plain
         # lists it accepts at runtime.
-        self._collection.upsert(
-            ids=ids,
-            documents=contents,
-            metadatas=metadatas,  # type: ignore[arg-type]
-            embeddings=embeddings,  # type: ignore[arg-type]
-        )
+        try:
+            self._collection.upsert(
+                ids=ids,
+                documents=contents,
+                metadatas=metadatas,  # type: ignore[arg-type]
+                embeddings=embeddings,  # type: ignore[arg-type]
+            )
+        except Exception as e:
+            match = _DIMENSION_ERROR.search(str(e))
+            if not match:
+                raise
+            # Surface a structured error naming both widths, so the caller can
+            # decide between recreating an empty collection and asking for a
+            # rebuild, rather than parsing a driver message itself.
+            expected, received = int(match.group(1)), int(match.group(2))
+            raise IndexModelMismatchError(
+                f"The existing index holds {expected}-dimension vectors but the "
+                f"current embedding model produces {received}. "
+                "Rebuild the index to continue.",
+                details={"expected_dimensions": expected, "received_dimensions": received},
+            ) from e
 
     def delete(self, ids: list[str]) -> None:
         """Delete chunks by id."""

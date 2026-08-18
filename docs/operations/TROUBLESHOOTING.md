@@ -721,3 +721,7 @@ has moved are reported in `missing_sources` and need re-importing.
 
 Newer builds refuse the import up front with `index_model_mismatch` and name the
 remedy, rather than surfacing the driver's dimension error.
+
+An **empty** index that still reports this needs no action: Chroma keeps a
+collection's width after its rows are deleted, so an emptied index can still
+reject a new model. That case is now recreated automatically on the next import.
