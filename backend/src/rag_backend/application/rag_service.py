@@ -21,7 +21,11 @@ from typing import Any
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 
 from rag_backend.application.citations import validate_citations
-from rag_backend.application.ingestion_service import build_ingested_document
+from rag_backend.application.ingestion_service import (
+    CHUNKER_VERSION,
+    PARSER_VERSION,
+    build_ingested_document,
+)
 from rag_backend.application.prompts import (
     DEFAULT_CONTEXT_TOKEN_BUDGET,
     GROUNDED_ANSWER_TEMPLATE,
@@ -34,6 +38,7 @@ from rag_backend.application.retrieval import (
     candidate_pool_size,
     fuse_results,
 )
+from rag_backend.domain.fingerprint import build_fingerprint, compare
 from rag_backend.errors import (
     CancelledError,
     ErrorCode,
@@ -172,6 +177,9 @@ class DocumentRAGService:
 
             self.vector_store.upsert(ids, contents, metadatas, embeddings)
             self.stats["documents_indexed"] += len(ids)
+            if ids:
+                # Stamp the index so a later model change is detectable.
+                self.record_fingerprint()
 
             return {
                 "status": "partial_success" if errors else "success",
@@ -540,6 +548,34 @@ class DocumentRAGService:
         except Exception as e:
             logger.debug("Query trace persistence failed: %s", e)
 
+    # -- Index fingerprint ----------------------------------------------------
+
+    def current_fingerprint(self) -> dict[str, Any]:
+        """Describe the configuration this process would index with."""
+        return build_fingerprint(
+            embedding_model=self.embedding_model,
+            embedding_digest=self.ollama.model_digest(self.embedding_model),
+            chunker_version=CHUNKER_VERSION,
+            parser_version=PARSER_VERSION,
+        )
+
+    def stored_fingerprint(self) -> dict[str, Any] | None:
+        """The fingerprint recorded when the index was last written."""
+        stored = self.catalog.get_setting("index_fingerprint", None)
+        return stored or None
+
+    def record_fingerprint(self) -> dict[str, Any]:
+        """Persist the current configuration as the index's fingerprint."""
+        fingerprint = self.current_fingerprint()
+        self.catalog.set_setting("index_fingerprint", fingerprint)
+        return fingerprint
+
+    def check_index_compatibility(self) -> dict[str, Any]:
+        """Report whether existing vectors match the running configuration."""
+        current = self.current_fingerprint()
+        result = compare(self.stored_fingerprint(), current)
+        return {**result, "current": current, "stored": self.stored_fingerprint()}
+
     # -- Observability --------------------------------------------------------
 
     def get_stats(self) -> dict[str, Any]:
@@ -606,6 +642,7 @@ class DocumentRAGService:
                     "catalog_path": self.app_db_path,
                 },
                 "ollama": ollama,
+                "index": self.check_index_compatibility(),
                 "eval": {
                     "status": "enabled",
                     "endpoint": "/eval",

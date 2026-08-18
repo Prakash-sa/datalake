@@ -136,9 +136,33 @@ def stub_rag_service() -> StubRagService:
     return StubRagService()
 
 
+class StubDataService:
+    """In-memory stand-in for export/import/backup."""
+
+    def backup(self, destination_dir: str | None = None) -> dict[str, Any]:
+        return {"status": "success", "path": "/tmp/catalog.db", "size_bytes": 1}
+
+    def list_backups(self) -> list[dict[str, Any]]:
+        return []
+
+    def export(self, destination: str) -> dict[str, Any]:
+        return {"status": "success", "path": destination, "document_count": 0}
+
+    def inspect(self, source: str) -> dict[str, Any]:
+        return {"status": "success", "manifest": {"format_version": 1}}
+
+    def import_archive(self, source: str) -> dict[str, Any]:
+        return {"status": "success", "document_count": 0, "reindex_required": True}
+
+
 @pytest.fixture
 def stub_job_service() -> StubJobService:
     return StubJobService()
+
+
+@pytest.fixture
+def stub_data_service() -> StubDataService:
+    return StubDataService()
 
 
 @pytest.fixture
@@ -146,12 +170,14 @@ def client(
     settings: Settings,
     stub_rag_service: StubRagService,
     stub_job_service: StubJobService,
+    stub_data_service: StubDataService,
 ):
     """TestClient whose app has the stub services injected post-startup."""
     app = create_app(settings)
     with TestClient(app) as test_client:
         app.state.rag_service = stub_rag_service
         app.state.job_service = stub_job_service
+        app.state.data_service = stub_data_service
         yield test_client
 
 
@@ -163,4 +189,5 @@ def unready_client(settings: Settings):
         app.state.rag_service = None
         app.state.eval_service = None
         app.state.job_service = None
+        app.state.data_service = None
         yield test_client

@@ -111,6 +111,31 @@ class IngestionJobService:
         self._wake.set()
         return updated
 
+    def rebuild_all(self) -> dict[str, Any]:
+        """Re-queue every catalogued document for reindexing.
+
+        Used after an embedding-model change, when existing vectors can no
+        longer be compared against new queries. Documents whose source file has
+        since moved are reported rather than queued, because reindexing needs
+        the original bytes.
+        """
+        queued: list[dict[str, Any]] = []
+        missing: list[str] = []
+
+        for document in self._catalog.list_documents():
+            source = Path(document["source_path"]).expanduser()
+            if not source.is_file():
+                missing.append(document["source_path"])
+                continue
+            queued.append(self.enqueue(str(source), force_reindex=True))
+
+        return {
+            "status": "accepted",
+            "queued": len(queued),
+            "jobs": queued,
+            "missing_sources": missing,
+        }
+
     # -- Worker ---------------------------------------------------------------
 
     def start(self) -> None:

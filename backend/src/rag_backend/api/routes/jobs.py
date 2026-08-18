@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from rag_backend.dependencies import JobServiceDep
+from rag_backend.dependencies import JobServiceDep, RagServiceDep
 from rag_backend.schemas import (
     JobEnqueueRequest,
     JobListResponse,
@@ -66,3 +66,14 @@ async def retry_job(job_id: str, job_service: JobServiceDep) -> dict[str, Any]:
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return {"status": "success", "job": job}
+
+
+@router.post("/rebuild", status_code=status.HTTP_202_ACCEPTED)
+async def rebuild_index(job_service: JobServiceDep, rag_service: RagServiceDep) -> dict[str, Any]:
+    """Re-queue every catalogued document for reindexing.
+
+    Required after an embedding-model change: vectors produced by a different
+    model cannot be compared against new queries.
+    """
+    result = job_service.rebuild_all()
+    return {**result, "index": rag_service.check_index_compatibility()}

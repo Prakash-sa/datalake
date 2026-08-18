@@ -1,6 +1,8 @@
 """Pydantic request and response schemas for the HTTP API."""
 
 from rag_backend.schemas.requests import (
+    DataExportRequest,
+    DataImportRequest,
     DocumentIndexRequest,
     DocumentQueryRequest,
     DocumentSearchRequest,
@@ -30,6 +32,8 @@ from rag_backend.schemas.responses import (
 
 __all__ = [
     "CitationReport",
+    "DataExportRequest",
+    "DataImportRequest",
     "DocumentCatalogResponse",
     "DocumentIndexRequest",
     "DocumentQueryRequest",

@@ -47,6 +47,7 @@ Use cases and orchestration.
 | `prompts.py`           | Versioned prompt templates and context rendering           |
 | `eval_service.py`      | Deterministic release-gating checks and retrieval metrics  |
 | `ingestion_jobs.py`    | Persistent job queue and single background worker          |
+| `data_transfer.py`     | Export, import, and backup of local data                   |
 | `citations.py`         | Citation parsing and range validation - pure functions     |
 | `metrics.py`           | Hit rate, recall, MRR, nDCG - pure functions                |
 
@@ -117,6 +118,35 @@ synchronously in tests.
 Cancellation is checked at stage boundaries, so a cancelled import stops between
 stages rather than leaving a half-committed index. Only failed jobs can be
 retried; a cancelled job stays cancelled, since stopping it was deliberate.
+
+## Index fingerprints
+
+Every write to the vector store stamps the index with the configuration that
+produced it: embedding model, model digest, chunker and parser versions, and an
+index schema version. `domain/fingerprint.py` compares that stamp against the
+running configuration as pure logic.
+
+A changed embedding model, digest, or schema version means existing vectors
+cannot be compared against new queries, so `rebuild_required` is set and
+`/jobs/rebuild` re-queues every catalogued document. A changed chunker or parser
+is advisory: retrieval behaviour differs, but existing vectors remain valid.
+
+Digests matter because a tag can be repointed at new weights without its name
+changing. An unknown digest on either side is not treated as a mismatch, since
+an index built while Ollama was unreachable has none to record.
+
+## Data transfer
+
+`data_transfer.py` snapshots the catalog with SQLite's backup API rather than
+copying the file, so a snapshot taken while the app is running is consistent.
+Exports are a zip holding that snapshot plus a manifest; vectors are excluded
+because they are reproducible from the sources and would dominate the size.
+
+Import restores through the same backup API rather than overwriting the database
+file. The catalog runs in WAL mode, so replacing the bytes under a live
+connection leaves a stale `-wal` that SQLite replays over the restored data. The
+current catalog is backed up first, and the caller is told a reindex is needed,
+since vectors are not part of the archive.
 
 ## Streaming
 

@@ -53,6 +53,14 @@ class OllamaClient:
                 for model in payload.get("models", [])
                 if model.get("name") or model.get("model")
             }
+            # Digests identify the exact weights behind a tag. A tag can be
+            # repointed at new weights, so the digest is what tells us an index
+            # was built with a different model than the one now installed.
+            digests = {
+                (model.get("name") or model.get("model")): model.get("digest", "")
+                for model in payload.get("models", [])
+                if model.get("name") or model.get("model")
+            }
             # Accept a bare family name as satisfying a tagged requirement.
             aliases = installed | {model.split(":", 1)[0] for model in installed}
             missing = [model for model in self.required_models if model not in aliases]
@@ -63,6 +71,7 @@ class OllamaClient:
                 "required_models": self.required_models,
                 "installed_models": sorted(installed),
                 "missing_models": missing,
+                "digests": digests,
             }
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
             logger.warning("Ollama readiness failed: %s", e)
@@ -72,6 +81,7 @@ class OllamaClient:
                 "required_models": self.required_models,
                 "installed_models": [],
                 "missing_models": self.required_models,
+                "digests": {},
                 "error": str(e),
             }
 
@@ -260,3 +270,18 @@ class OllamaClient:
             raise
         except Exception as e:
             raise self._as_rag_error(e) from e
+
+    def model_digest(self, name: str) -> str | None:
+        """Return the digest for an installed model, or None if unknown.
+
+        Falls back to a bare family match, mirroring how ``check_health``
+        accepts an untagged name as satisfying a tagged requirement.
+        """
+        digests = self.check_health().get("digests", {})
+        if name in digests:
+            return digests[name] or None
+        family = name.split(":", 1)[0]
+        for installed, digest in digests.items():
+            if installed.split(":", 1)[0] == family:
+                return digest or None
+        return None

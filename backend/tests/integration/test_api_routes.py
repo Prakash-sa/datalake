@@ -172,3 +172,44 @@ def test_model_pull_stream_emits_progress_and_done(client, stub_rag_service):
 
 def test_model_pull_stream_is_in_the_openapi_schema(client):
     assert "/models/pull/stream" in client.get("/openapi.json").json()["paths"]
+
+
+def test_backup_endpoint_returns_a_path(client):
+    response = client.post("/data/backup")
+
+    assert response.status_code == 200
+    assert response.json()["path"]
+
+
+def test_backups_can_be_listed(client):
+    assert client.get("/data/backups").json()["backups"] == []
+
+
+def test_export_requires_a_destination(client):
+    assert client.post("/data/export", json={}).status_code == 422
+
+
+def test_export_returns_the_written_path(client):
+    response = client.post("/data/export", json={"destination": "/tmp/lib.zip"})
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "/tmp/lib.zip"
+
+
+def test_import_reports_that_a_reindex_is_needed(client):
+    response = client.post("/data/import", json={"source": "/tmp/lib.zip"})
+
+    assert response.status_code == 200
+    assert response.json()["reindex_required"] is True
+
+
+def test_data_endpoints_are_in_the_openapi_schema(client):
+    paths = client.get("/openapi.json").json()["paths"]
+    for expected in (
+        "/data/backup",
+        "/data/backups",
+        "/data/export",
+        "/data/import",
+        "/jobs/rebuild",
+    ):
+        assert expected in paths

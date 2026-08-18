@@ -99,3 +99,15 @@ class JobEnqueueRequest(BaseModel):
     force_reindex: bool = Field(
         False, description="Re-parse and re-index files already in the catalog"
     )
+
+
+class DataExportRequest(BaseModel):
+    """Write an archive of local data."""
+
+    destination: str = Field(..., min_length=1, max_length=4096)
+
+
+class DataImportRequest(BaseModel):
+    """Read an archive of local data."""
+
+    source: str = Field(..., min_length=1, max_length=4096)

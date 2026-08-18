@@ -80,6 +80,12 @@ use.
 | GET    | `/jobs/{id}`         | Fetch one job                            |
 | POST   | `/jobs/{id}/cancel`  | Cancel a queued or running job           |
 | POST   | `/jobs/{id}/retry`   | Requeue a failed job                     |
+| POST   | `/jobs/rebuild`      | Re-queue every document for reindexing   |
+| POST   | `/data/backup`       | Snapshot the catalog database            |
+| GET    | `/data/backups`      | List snapshots, newest first             |
+| POST   | `/data/export`       | Write a portable archive                 |
+| POST   | `/data/import/inspect`| Read an archive manifest                |
+| POST   | `/data/import`       | Restore a catalog from an archive        |
 | GET    | `/documents`         | List catalog documents                   |
 | DELETE | `/documents/{id}`    | Delete a document and its chunks         |
 | POST   | `/documents/search`  | Hybrid dense + lexical search            |

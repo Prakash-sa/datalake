@@ -5,6 +5,7 @@ SQLite catalog for local desktop memory.
 import json
 import sqlite3
 from collections.abc import Iterable
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,7 @@ class CatalogStore:
         return conn
 
     def _migrate(self) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -179,7 +180,7 @@ class CatalogStore:
         now = datetime.now(UTC).isoformat()
         metadata_json = json.dumps(document.get("metadata", {}), sort_keys=True)
         chunk_list = list(chunks)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO documents (
@@ -243,14 +244,14 @@ class CatalogStore:
                 )
 
     def get_document_by_hash(self, source_hash: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             row = conn.execute(
                 "SELECT * FROM documents WHERE source_hash = ?", (source_hash,)
             ).fetchone()
             return self._document_from_row(row) if row else None
 
     def list_documents(self) -> list[dict[str, Any]]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 """
                 SELECT d.*, COUNT(c.id) AS chunk_count
@@ -263,7 +264,7 @@ class CatalogStore:
             return [self._document_from_row(row) for row in rows]
 
     def get_chunk_ids(self, document_id: str) -> list[str]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 "SELECT id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
                 (document_id,),
@@ -275,7 +276,7 @@ class CatalogStore:
         if not terms:
             return []
         expression = " OR ".join(f'"{term}"' for term in terms[:8])
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 """
                 SELECT c.id, c.document_id, c.chunk_index, c.content, c.metadata_json,
@@ -301,7 +302,7 @@ class CatalogStore:
             ]
 
     def delete_document(self, document_id: str) -> bool:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute("DELETE FROM chunks_fts WHERE document_id = ?", (document_id,))
             cursor = conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
             return cursor.rowcount > 0
@@ -309,7 +310,7 @@ class CatalogStore:
     def record_eval_run(
         self, run_id: str, status: str, request: dict[str, Any], result: dict[str, Any]
     ) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO eval_runs (id, status, request_json, result_json, created_at)
@@ -325,7 +326,7 @@ class CatalogStore:
             )
 
     def record_query_trace(self, trace: dict[str, Any]) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO query_traces (
@@ -351,7 +352,7 @@ class CatalogStore:
             )
 
     def set_setting(self, key: str, value: Any) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO settings (key, value_json, updated_at)
@@ -364,7 +365,7 @@ class CatalogStore:
             )
 
     def get_setting(self, key: str, default: Any = None) -> Any:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             row = conn.execute("SELECT value_json FROM settings WHERE key = ?", (key,)).fetchone()
             return json.loads(row["value_json"]) if row else default
 
@@ -381,7 +382,7 @@ class CatalogStore:
     ) -> dict[str, Any]:
         """Enqueue a new ingestion job."""
         now = datetime.now(UTC).isoformat()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO ingestion_jobs (
@@ -397,7 +398,7 @@ class CatalogStore:
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Fetch a single job, or None when it does not exist."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             row = conn.execute("SELECT * FROM ingestion_jobs WHERE id = ?", (job_id,)).fetchone()
         return self._job_from_row(row) if row else None
 
@@ -415,7 +416,7 @@ class CatalogStore:
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
 
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(query, params).fetchall()
         return [self._job_from_row(row) for row in rows]
 
@@ -437,7 +438,7 @@ class CatalogStore:
 
         updates["updated_at"] = datetime.now(UTC).isoformat()
         assignments = ", ".join(f"{key} = ?" for key in updates)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 f"UPDATE ingestion_jobs SET {assignments} WHERE id = ?",
                 (*updates.values(), job_id),
@@ -446,7 +447,7 @@ class CatalogStore:
 
     def delete_job(self, job_id: str) -> bool:
         """Remove a job record. Returns False when it did not exist."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute("DELETE FROM ingestion_jobs WHERE id = ?", (job_id,))
         return cursor.rowcount > 0
 

@@ -234,3 +234,53 @@ def test_start_is_idempotent(jobs):
         assert jobs._worker is first
     finally:
         jobs.shutdown()
+
+
+def test_rebuild_requeues_every_catalogued_document(jobs, doc):
+    first = jobs.enqueue(str(doc))
+    jobs.process_job(first["id"])
+
+    result = jobs.rebuild_all()
+
+    assert result["queued"] == 1
+    assert result["missing_sources"] == []
+    # Reindexing must bypass the duplicate check or nothing would be re-embedded.
+    assert result["jobs"][0]["force_reindex"] is True
+
+
+def test_rebuild_reports_documents_whose_source_file_is_gone(jobs, doc):
+    job = jobs.enqueue(str(doc))
+    jobs.process_job(job["id"])
+    doc.unlink()
+
+    result = jobs.rebuild_all()
+
+    assert result["queued"] == 0
+    assert len(result["missing_sources"]) == 1
+
+
+def test_rebuild_on_an_empty_catalog_queues_nothing(jobs):
+    result = jobs.rebuild_all()
+
+    assert result["queued"] == 0
+    assert result["jobs"] == []
+
+
+def test_indexing_records_the_index_fingerprint(jobs, rag, doc):
+    assert rag.stored_fingerprint() is None
+
+    job = jobs.enqueue(str(doc))
+    jobs.process_job(job["id"])
+
+    stored = rag.stored_fingerprint()
+    assert stored is not None
+    assert stored["embedding_model"] == rag.embedding_model
+
+
+def test_changing_the_embedding_model_reports_a_rebuild(jobs, rag, doc):
+    job = jobs.enqueue(str(doc))
+    jobs.process_job(job["id"])
+
+    rag.embedding_model = "a-different-model"
+
+    assert rag.check_index_compatibility()["rebuild_required"] is True
