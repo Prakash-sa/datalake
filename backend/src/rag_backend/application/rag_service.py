@@ -117,7 +117,14 @@ class DocumentRAGService:
             self.stats["errors"] += 1
             raise ConnectionError(f"Failed to initialize RAG components: {e}") from e
 
-        logger.info("RAG service ready (embedding=%s, llm=%s)", embedding_model, llm_model)
+        # Report the provider actually in use; naming the configured Ollama
+        # model when embeddings run locally is misleading during diagnosis.
+        logger.info(
+            "RAG service ready (embeddings=%s/%s, generation=%s)",
+            self.embedding_provider_name,
+            getattr(self.embeddings, "model_name", embedding_model),
+            llm_model,
+        )
 
     # -- Models ---------------------------------------------------------------
 

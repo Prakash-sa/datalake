@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 from contextlib import contextmanager
 
 import pytest
@@ -172,3 +173,48 @@ def test_stream_pull_skips_malformed_records(monkeypatch, client):
     lines = [b"garbage", json.dumps({"status": "success"}).encode()]
     with _fake_urlopen(monkeypatch, lines):
         assert [r["status"] for r in client.stream_pull_model("llm")] == ["success"]
+
+
+def test_health_is_cached_so_polling_does_not_hammer_the_daemon(monkeypatch, client):
+    calls = {"n": 0}
+
+    def counting(request, timeout=None):
+        calls["n"] += 1
+        raise urllib.error.URLError("refused")
+
+    monkeypatch.setattr(ollama_client.urllib.request, "urlopen", counting)
+
+    for _ in range(10):
+        client.check_health()
+
+    assert calls["n"] == 1
+
+
+def test_cache_can_be_bypassed(monkeypatch, client):
+    calls = {"n": 0}
+
+    def counting(request, timeout=None):
+        calls["n"] += 1
+        raise urllib.error.URLError("refused")
+
+    monkeypatch.setattr(ollama_client.urllib.request, "urlopen", counting)
+
+    client.check_health()
+    client.check_health(use_cache=False)
+
+    assert calls["n"] == 2
+
+
+def test_an_unchanged_failure_is_logged_once(monkeypatch, client, caplog):
+    # A stopped daemon polled twice a second would otherwise bury the log.
+    monkeypatch.setattr(
+        ollama_client.urllib.request,
+        "urlopen",
+        lambda request, timeout=None: (_ for _ in ()).throw(urllib.error.URLError("refused")),
+    )
+
+    with caplog.at_level("WARNING"):
+        for _ in range(5):
+            client.check_health(use_cache=False)
+
+    assert sum("Ollama unreachable" in r.message for r in caplog.records) == 1

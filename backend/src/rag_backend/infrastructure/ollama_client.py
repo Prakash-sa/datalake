@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -26,6 +27,9 @@ from rag_backend.errors import (
 logger = logging.getLogger(__name__)
 
 TAGS_TIMEOUT_SECONDS = 3
+# The UI polls /readiness and /models together, and Activity re-polls while a
+# job runs, so an uncached probe means several network round trips per second.
+HEALTH_CACHE_SECONDS = 2.0
 PULL_TIMEOUT_SECONDS = 60 * 60
 # Wall-clock ceiling for a whole generation. The plan requires real request
 # timeouts rather than the unbounded waits langchain's invoke() performs.
@@ -38,9 +42,32 @@ class OllamaClient:
     def __init__(self, base_url: str, required_models: list[str]) -> None:
         self.base_url = base_url.rstrip("/")
         self.required_models = required_models
+        self._lock = threading.Lock()
+        self._cached: dict[str, Any] | None = None
+        self._cached_at = 0.0
+        # Only a change in outcome is worth logging; repeating an unchanged
+        # failure once per poll buries everything else.
+        self._last_logged: str | None = None
 
-    def check_health(self) -> dict[str, Any]:
-        """Report daemon reachability and whether required models are present."""
+    def check_health(self, use_cache: bool = True) -> dict[str, Any]:
+        """Report daemon reachability and whether required models are present.
+
+        Cached briefly, because callers poll and a stopped daemon should not
+        cost a network attempt per request.
+        """
+        if use_cache:
+            with self._lock:
+                fresh = time.monotonic() - self._cached_at < HEALTH_CACHE_SECONDS
+                if self._cached is not None and fresh:
+                    return self._cached
+
+        result = self._probe()
+        with self._lock:
+            self._cached = result
+            self._cached_at = time.monotonic()
+        return result
+
+    def _probe(self) -> dict[str, Any]:
         try:
             request = urllib.request.Request(
                 f"{self.base_url}/api/tags", headers={"Accept": "application/json"}
@@ -65,6 +92,15 @@ class OllamaClient:
             aliases = installed | {model.split(":", 1)[0] for model in installed}
             missing = [model for model in self.required_models if model not in aliases]
 
+            signature = f"ok:{sorted(missing)}"
+            if signature != self._last_logged:
+                logger.info(
+                    "Ollama reachable at %s (%d model(s) missing)",
+                    self.base_url,
+                    len(missing),
+                )
+                self._last_logged = signature
+
             return {
                 "status": "ready" if not missing else "degraded",
                 "url": self.base_url,
@@ -74,7 +110,10 @@ class OllamaClient:
                 "digests": digests,
             }
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-            logger.warning("Ollama readiness failed: %s", e)
+            signature = f"error:{e}"
+            if signature != self._last_logged:
+                logger.warning("Ollama unreachable at %s: %s", self.base_url, e)
+                self._last_logged = signature
             return {
                 "status": "error",
                 "url": self.base_url,
