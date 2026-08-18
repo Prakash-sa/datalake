@@ -69,7 +69,8 @@ use.
 | GET    | `/readiness`         | Capability and dependency report         |
 | GET    | `/diagnostics`       | Local support diagnostics                |
 | GET    | `/models`            | Installed and required Ollama models     |
-| POST   | `/models/pull`       | Pull an Ollama model                     |
+| POST   | `/models/pull`       | Pull an Ollama model (blocking)          |
+| POST   | `/models/pull/stream`| Pull a model, streaming progress as SSE  |
 | GET    | `/settings`          | Read runtime settings                    |
 | POST   | `/settings`          | Persist runtime settings                 |
 | POST   | `/documents/index`   | Index in-memory documents                |

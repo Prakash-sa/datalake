@@ -68,3 +68,82 @@ export function formatRelative(iso: string | null | undefined): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
 }
+
+/** One frame from a streaming model pull. */
+export type PullEvent =
+  | {
+      event: 'progress';
+      model: string;
+      status: string;
+      completed: number;
+      total: number;
+      percent: number | null;
+    }
+  | { event: 'done'; model: string }
+  | { event: 'error'; code: string; error: string; actionable?: boolean };
+
+/**
+ * Pull a model, reporting progress as it downloads.
+ *
+ * Uses the streaming endpoint directly rather than IPC: a pull can take many
+ * minutes, and a single buffered response would leave the user with no signal.
+ */
+export async function streamModelPull(
+  name: string,
+  apiUrl: string,
+  onEvent: (event: PullEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    const response = await fetch(`${apiUrl}/models/pull/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ name }),
+      signal,
+    });
+
+    if (!response.ok || !response.body) {
+      onEvent({
+        event: 'error',
+        code: 'model_unavailable',
+        error: `Backend returned ${response.status}`,
+      });
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            onEvent(JSON.parse(line.slice(6)) as PullEvent);
+          } catch {
+            // Skip an unparseable frame rather than aborting the pull.
+          }
+        }
+        boundary = buffer.indexOf('\n\n');
+      }
+    }
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') {
+      onEvent({ event: 'error', code: 'cancelled', error: 'Download cancelled' });
+      return;
+    }
+    onEvent({
+      event: 'error',
+      code: 'internal_error',
+      error: error instanceof Error ? error.message : 'Download failed',
+    });
+  }
+}

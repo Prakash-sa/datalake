@@ -139,6 +139,10 @@ Failures carry a structured `code` from `rag_backend.errors`, separating
 "retrieval failed" from "model unavailable" from "no relevant evidence", and
 flagging whether the user can act on it.
 
+`POST /models/pull/stream` uses the same framing for model downloads, emitting
+`progress` frames with Ollama's status and byte counts. A pull can take many
+minutes, so a buffered response would leave first-run setup with no signal.
+
 ## Entry points
 
 | Context          | Command                                   |

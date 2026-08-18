@@ -150,3 +150,25 @@ def test_job_endpoints_are_in_the_openapi_schema(client):
     paths = client.get("/openapi.json").json()["paths"]
     for expected in ("/jobs", "/jobs/{job_id}", "/jobs/{job_id}/cancel", "/jobs/{job_id}/retry"):
         assert expected in paths
+
+
+def test_model_pull_stream_emits_progress_and_done(client, stub_rag_service):
+    class StubOllama:
+        def stream_pull_model(self, name, cancel=None):
+            yield {"status": "downloading", "completed": 25, "total": 100}
+            yield {"status": "success"}
+
+    stub_rag_service.ollama = StubOllama()
+
+    response = client.post("/models/pull/stream", json={"name": "qwen3:4b"})
+
+    assert response.status_code == 200
+    events = _sse_events(response.text)
+    assert [e["event"] for e in events] == ["progress", "progress", "done"]
+    assert events[0]["percent"] == 25.0
+    # No byte counts on that record, so percent is absent rather than zero.
+    assert events[1]["percent"] is None
+
+
+def test_model_pull_stream_is_in_the_openapi_schema(client):
+    assert "/models/pull/stream" in client.get("/openapi.json").json()["paths"]

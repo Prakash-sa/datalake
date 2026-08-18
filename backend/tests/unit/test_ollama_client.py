@@ -138,3 +138,37 @@ def test_exception_classification(message, expected):
 
 def test_timeout_type_classifies_even_without_a_message():
     assert classify_ollama_exception(TimeoutError()) is ErrorCode.GENERATION_TIMEOUT
+
+
+def test_stream_pull_yields_progress_records(monkeypatch, client):
+    lines = [
+        json.dumps({"status": "pulling manifest"}).encode(),
+        json.dumps({"status": "downloading", "completed": 50, "total": 100}).encode(),
+        json.dumps({"status": "success"}).encode(),
+    ]
+    with _fake_urlopen(monkeypatch, lines):
+        records = list(client.stream_pull_model("llm"))
+
+    assert [r["status"] for r in records] == ["pulling manifest", "downloading", "success"]
+    assert records[1]["completed"] == 50
+
+
+def test_stream_pull_honours_cancellation(monkeypatch, client):
+    lines = [json.dumps({"status": f"s{i}"}).encode() for i in range(5)]
+    cancel = threading.Event()
+    cancel.set()
+
+    with _fake_urlopen(monkeypatch, lines):
+        assert list(client.stream_pull_model("llm", cancel=cancel)) == []
+
+
+def test_stream_pull_raises_on_an_error_record(monkeypatch, client):
+    lines = [json.dumps({"error": "no such model"}).encode()]
+    with _fake_urlopen(monkeypatch, lines), pytest.raises(ModelUnavailableError):
+        list(client.stream_pull_model("llm"))
+
+
+def test_stream_pull_skips_malformed_records(monkeypatch, client):
+    lines = [b"garbage", json.dumps({"status": "success"}).encode()]
+    with _fake_urlopen(monkeypatch, lines):
+        assert [r["status"] for r in client.stream_pull_model("llm")] == ["success"]

@@ -213,3 +213,50 @@ class OllamaClient:
             raise
         except Exception as e:
             raise self._as_rag_error(e) from e
+
+    def stream_pull_model(
+        self, name: str, cancel: threading.Event | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """Pull a model, yielding Ollama's progress records as they arrive.
+
+        Each record carries a ``status`` string and, while layers are
+        downloading, ``completed`` and ``total`` byte counts. Cancellation is
+        checked between records; closing the connection stops the transfer.
+        """
+        payload = json.dumps({"name": name, "stream": True}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/api/pull",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/x-ndjson",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=PULL_TIMEOUT_SECONDS) as response:
+                for raw_line in response:
+                    if cancel is not None and cancel.is_set():
+                        logger.info("Model pull cancelled by caller")
+                        return
+
+                    line = raw_line.decode("utf-8").strip()
+                    if not line:
+                        continue
+
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.debug("Skipping malformed pull record")
+                        continue
+
+                    if record.get("error"):
+                        raise ModelUnavailableError(
+                            str(record["error"]), code=ErrorCode.MODEL_UNAVAILABLE
+                        )
+                    yield record
+        except RagError:
+            raise
+        except Exception as e:
+            raise self._as_rag_error(e) from e

@@ -22,8 +22,11 @@ import {
 } from 'lucide-react';
 import { streamQuery } from '@/lib/streamQuery';
 import { apiRequest as callApi } from '@/lib/api';
+import { dismissSetup, isSetupDismissed } from '@/lib/setup';
+import type { ModelListResponse } from '@/lib/types';
 import ActivityView from '@/app/components/ActivityView';
 import DiagnosticsView from '@/app/components/DiagnosticsView';
+import FirstRunSetup from '@/app/components/FirstRunSetup';
 import LibraryView from '@/app/components/LibraryView';
 import SettingsView from '@/app/components/SettingsView';
 import type { CancelStream, CitationReport, StreamEvent } from '@/types/electron';
@@ -112,6 +115,9 @@ export default function DocumentRAGInterface() {
   >('query');
   // Bumped after an import or delete so the library refetches.
   const [libraryVersion, setLibraryVersion] = useState(0);
+  // null while the readiness probe is in flight, so the app does not flash
+  // the query screen before setup is known to be needed.
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
@@ -121,6 +127,19 @@ export default function DocumentRAGInterface() {
   useEffect(() => {
     setIsDesktop(Boolean(window.desktop?.isElectron));
   }, []);
+
+  useEffect(() => {
+    if (isSetupDismissed()) {
+      setNeedsSetup(false);
+      return;
+    }
+    // Setup is derived from the backend rather than a stored flag, so it
+    // reappears if the required models are ever removed.
+    void callApi<ModelListResponse>('/models', apiUrl).then((response) => {
+      const missing = response.data?.missing_models ?? [];
+      setNeedsSetup(!response.ok || response.data?.status === 'error' || missing.length > 0);
+    });
+  }, [apiUrl]);
 
   const apiRequest = <T,>(
     path: string,
@@ -239,6 +258,29 @@ export default function DocumentRAGInterface() {
     { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
     { id: 'diagnostics' as const, label: 'Diagnostics', icon: Stethoscope },
   ];
+
+  if (needsSetup === null) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-100">
+        <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+      </main>
+    );
+  }
+
+  if (needsSetup) {
+    return (
+      <main className="min-h-screen bg-zinc-950 px-5 py-12 text-zinc-100 sm:px-8">
+        <FirstRunSetup
+          apiUrl={apiUrl}
+          onComplete={() => setNeedsSetup(false)}
+          onSkip={() => {
+            dismissSetup();
+            setNeedsSetup(false);
+          }}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
