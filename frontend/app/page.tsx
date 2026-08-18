@@ -135,10 +135,13 @@ export default function DocumentRAGInterface() {
     }
     // Setup is derived from the backend rather than a stored flag, so it
     // reappears if the required models are ever removed.
-    void callApi<ModelListResponse>('/models', apiUrl).then((response) => {
-      const missing = response.data?.missing_models ?? [];
-      setNeedsSetup(!response.ok || response.data?.status === 'error' || missing.length > 0);
-    });
+    void callApi<ModelListResponse>('/models', apiUrl)
+      .then((response) => {
+        const missing = response.data?.missing_models ?? [];
+        setNeedsSetup(!response.ok || response.data?.status === 'error' || missing.length > 0);
+      })
+      // Show setup rather than spinning forever if the probe itself fails.
+      .catch(() => setNeedsSetup(true));
   }, [apiUrl]);
 
   const apiRequest = <T,>(

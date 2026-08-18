@@ -38,6 +38,12 @@ ENV/
 env/
 
 # ---- Node / Next.js ----
+# Derived from the built export by scripts/generate-csp-hashes.js.
+frontend/electron/csp-hashes.json
+# Playwright output
+test-results/
+playwright-report/
+.playwright/
 node_modules/
 npm-debug.log*
 yarn-debug.log*

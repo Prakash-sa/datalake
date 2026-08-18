@@ -73,6 +73,14 @@ jobs:
       - name: Build static export
         run: npm run build
 
+      - name: Electron end-to-end tests
+        # Electron needs a display; the packaged shell is what these exercise.
+        run: xvfb-run --auto-servernum npm run test:e2e
+        env:
+          # Some environments export this, which makes Electron behave as plain
+          # Node and reject the browser flags Playwright launches with.
+          ELECTRON_RUN_AS_NODE: ''
+
   compose:
     name: Compose config
     runs-on: ubuntu-latest

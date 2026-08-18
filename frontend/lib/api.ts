@@ -21,7 +21,16 @@ export async function apiRequest<T>(
 ): Promise<ApiResult<T>> {
   const desktopApi = typeof window !== 'undefined' ? window.desktop?.apiRequest : undefined;
   if (desktopApi) {
-    return desktopApi<T>({ path, method, body });
+    try {
+      return await desktopApi<T>({ path, method, body });
+    } catch (error) {
+      // Callers branch on `ok`; a rejected promise would strand them.
+      return {
+        ok: false,
+        status: 0,
+        error: error instanceof Error ? error.message : 'Backend unreachable',
+      };
+    }
   }
 
   try {
