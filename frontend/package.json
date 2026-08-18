@@ -17,7 +17,9 @@
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "backend:dist": "node scripts/package-backend.js",
     "dist:electron": "electron-builder",
-    "dist": "npm run build && npm run backend:dist && npm run dist:electron"
+    "dist": "npm run build && npm run backend:dist && npm run dist:electron",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
@@ -36,6 +38,7 @@
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.0",
+    "vitest": "^4.1.10",
     "wait-on": "^7.2.0"
   }
 }

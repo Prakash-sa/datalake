@@ -14,8 +14,14 @@ import {
   Sparkles,
   Upload,
   XCircle,
+  Library,
+  ListChecks,
+  Search as SearchIcon,
 } from 'lucide-react';
 import { streamQuery } from '@/lib/streamQuery';
+import { apiRequest as callApi } from '@/lib/api';
+import ActivityView from '@/app/components/ActivityView';
+import LibraryView from '@/app/components/LibraryView';
 import type { CancelStream, CitationReport, StreamEvent } from '@/types/electron';
 
 type RetrievedDocument = {
@@ -40,16 +46,6 @@ type ApiResult<T> = {
   status: number;
   data?: T;
   error?: string;
-};
-
-type IngestResult = {
-  status: string;
-  results: Array<{
-    status: string;
-    document?: { id: string; title?: string; source_path?: string };
-    chunks_indexed?: number;
-    error?: string;
-  }>;
 };
 
 type Capability = {
@@ -107,6 +103,9 @@ export default function DocumentRAGInterface() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const cancelRef = useRef<CancelStream | null>(null);
+  const [view, setView] = useState<'query' | 'library' | 'activity'>('query');
+  // Bumped after an import or delete so the library refetches.
+  const [libraryVersion, setLibraryVersion] = useState(0);
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
@@ -117,25 +116,11 @@ export default function DocumentRAGInterface() {
     setIsDesktop(Boolean(window.desktop?.isElectron));
   }, []);
 
-  const apiRequest = async <T,>(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', body?: unknown): Promise<ApiResult<T>> => {
-    const desktopApi = window.desktop?.apiRequest;
-    if (desktopApi) {
-      return desktopApi<T>({ path, method, body });
-    }
-
-    const response = await fetch(`${apiUrl}${path}`, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const payload = await response.json().catch(() => undefined);
-    return {
-      ok: response.ok,
-      status: response.status,
-      data: payload as T | undefined,
-      error: response.ok ? undefined : payload?.detail || 'Request failed',
-    };
-  };
+  const apiRequest = <T,>(
+    path: string,
+    method: 'GET' | 'POST' | 'DELETE' = 'GET',
+    body?: unknown,
+  ): Promise<ApiResult<T>> => callApi<T>(path, apiUrl, method, body);
 
   const handleStreamEvent = useCallback((event: StreamEvent) => {
     switch (event.event) {
@@ -216,7 +201,9 @@ export default function DocumentRAGInterface() {
       const paths = await selectDocuments();
       if (!paths.length) return;
 
-      const response = await apiRequest<IngestResult>('/documents/ingest', 'POST', {
+      // Queue the work instead of blocking on it; Activity shows progress and
+      // surfaces per-file failures with retry.
+      const response = await apiRequest<{ jobs: unknown[] }>('/jobs', 'POST', {
         paths,
         force_reindex: false,
       });
@@ -224,9 +211,12 @@ export default function DocumentRAGInterface() {
         throw new Error(response.error || 'Import failed');
       }
 
-      const indexed = response.data.results.reduce((count, item) => count + (item.chunks_indexed ?? 0), 0);
-      const failures = response.data.results.filter((item) => item.status === 'error').length;
-      setImportStatus(`${paths.length - failures}/${paths.length} files processed, ${indexed} chunks indexed`);
+      const queued = response.data.jobs.length;
+      setImportStatus(
+        `${queued} file${queued === 1 ? '' : 's'} queued for indexing — see Activity for progress`,
+      );
+      setLibraryVersion((version) => version + 1);
+      setView('activity');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import documents');
     } finally {
@@ -235,6 +225,12 @@ export default function DocumentRAGInterface() {
   };
 
   const documents = sources;
+
+  const views = [
+    { id: 'query' as const, label: 'Query', icon: SearchIcon },
+    { id: 'library' as const, label: 'Library', icon: Library },
+    { id: 'activity' as const, label: 'Activity', icon: ListChecks },
+  ];
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -274,10 +270,42 @@ export default function DocumentRAGInterface() {
               ))}
             </div>
           </div>
+
+          <nav className="flex gap-1 border-b border-zinc-800" aria-label="Views">
+            {views.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setView(item.id)}
+                aria-current={view === item.id ? 'page' : undefined}
+                className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+                  view === item.id
+                    ? 'border-cyan-400 text-white'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {view !== 'query' && (
+        <section className="mx-auto max-w-7xl px-5 py-6 sm:px-8">
+          {view === 'library' && (
+            <LibraryView key={libraryVersion} apiUrl={apiUrl} />
+          )}
+          {view === 'activity' && <ActivityView apiUrl={apiUrl} />}
+        </section>
+      )}
+
+      <section
+        className={`mx-auto max-w-7xl gap-6 px-5 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] ${
+          view === 'query' ? 'grid' : 'hidden'
+        }`}
+      >
         <div className="space-y-6">
           <form onSubmit={handleSubmit} className="rounded-md border border-zinc-800 bg-zinc-900 p-5 shadow-2xl">
             <label className="block text-sm font-medium text-zinc-200" htmlFor="query">
