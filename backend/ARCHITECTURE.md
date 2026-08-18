@@ -119,6 +119,26 @@ Cancellation is checked at stage boundaries, so a cancelled import stops between
 stages rather than leaving a half-committed index. Only failed jobs can be
 retried; a cancelled job stays cancelled, since stopping it was deliberate.
 
+## Logging
+
+`logging_config.py` owns handler, level, and filter setup; library modules only
+call `logging.getLogger(__name__)`.
+
+Output is redacted in production. No call site interpolates a document path, but
+the exceptions they log carry them — `No extractable text found in
+/Users/sam/medical results.pdf` — and a filename alone can be sensitive.
+Redaction therefore rewrites the formatted message, including rendered
+tracebacks, replacing filesystem paths, bearer tokens, and long hex secrets.
+URLs are deliberately preserved, since the Ollama endpoint is configuration and
+is needed to diagnose connection failures.
+
+This applies to logs only. The API still returns real paths, because the Library
+and Activity views must show users their own files.
+
+A size-rotating file handler writes to `<APP_DATA_DIR>/logs`, bounding disk use
+at `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)`. An unwritable log directory is
+logged and skipped rather than preventing startup.
+
 ## Index fingerprints
 
 Every write to the vector store stamps the index with the configuration that

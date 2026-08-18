@@ -20,7 +20,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     process environment variables.
     """
     settings = settings or get_settings()
-    configure_logging(settings.log_level)
+    configure_logging(
+        settings.log_level,
+        redact_logs=settings.log_redact,
+        log_dir=settings.resolved_log_dir,
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backup_count,
+    )
 
     app = FastAPI(
         title="Document RAG Engine",

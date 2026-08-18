@@ -17,7 +17,13 @@ def main() -> None:
     import uvicorn
 
     settings = get_settings()
-    configure_logging(settings.log_level)
+    configure_logging(
+        settings.log_level,
+        redact_logs=settings.log_redact,
+        log_dir=settings.resolved_log_dir,
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backup_count,
+    )
 
     uvicorn.run(
         create_app(settings),

@@ -25,6 +25,7 @@ _PROFILE_DEFAULTS: dict[str, dict[str, str]] = {
         "LOG_LEVEL": "DEBUG",
         "WORKERS": "1",
         "ALLOWED_ORIGINS": "*",
+        "LOG_REDACT": "false",
     },
     "testing": {
         "DEBUG": "true",
@@ -78,6 +79,13 @@ class Settings(BaseSettings):
     app_data_dir: str = Field(default=".", alias="APP_DATA_DIR")
     app_db_path: str | None = Field(default=None, alias="APP_DB_PATH")
 
+    # Logging. Redaction is disabled in development, where full paths are what
+    # make an error actionable.
+    log_dir: str | None = Field(default=None, alias="LOG_DIR")
+    log_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, alias="LOG_MAX_BYTES")
+    log_backup_count: int = Field(default=3, ge=0, alias="LOG_BACKUP_COUNT")
+    log_redact: bool = Field(default=True, alias="LOG_REDACT")
+
     # Resource limits
     max_documents: int = Field(default=10_000, ge=1, alias="MAX_DOCUMENTS")
     max_query_length: int = Field(default=1_000, ge=1, alias="MAX_QUERY_LENGTH")
@@ -89,6 +97,14 @@ class Settings(BaseSettings):
     def allowed_origins(self) -> list[str]:
         """CORS origins parsed from the comma-separated environment value."""
         return [o.strip() for o in self.allowed_origins_raw.split(",") if o.strip()]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def resolved_log_dir(self) -> str:
+        """Log directory, defaulting to ``<APP_DATA_DIR>/logs``."""
+        if self.log_dir:
+            return self.log_dir
+        return str(Path(self.app_data_dir) / "logs")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
