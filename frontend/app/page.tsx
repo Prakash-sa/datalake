@@ -17,11 +17,15 @@ import {
   Library,
   ListChecks,
   Search as SearchIcon,
+  Settings as SettingsIcon,
+  Stethoscope,
 } from 'lucide-react';
 import { streamQuery } from '@/lib/streamQuery';
 import { apiRequest as callApi } from '@/lib/api';
 import ActivityView from '@/app/components/ActivityView';
+import DiagnosticsView from '@/app/components/DiagnosticsView';
 import LibraryView from '@/app/components/LibraryView';
+import SettingsView from '@/app/components/SettingsView';
 import type { CancelStream, CitationReport, StreamEvent } from '@/types/electron';
 
 type RetrievedDocument = {
@@ -103,7 +107,9 @@ export default function DocumentRAGInterface() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const cancelRef = useRef<CancelStream | null>(null);
-  const [view, setView] = useState<'query' | 'library' | 'activity'>('query');
+  const [view, setView] = useState<
+    'query' | 'library' | 'activity' | 'settings' | 'diagnostics'
+  >('query');
   // Bumped after an import or delete so the library refetches.
   const [libraryVersion, setLibraryVersion] = useState(0);
 
@@ -230,6 +236,8 @@ export default function DocumentRAGInterface() {
     { id: 'query' as const, label: 'Query', icon: SearchIcon },
     { id: 'library' as const, label: 'Library', icon: Library },
     { id: 'activity' as const, label: 'Activity', icon: ListChecks },
+    { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
+    { id: 'diagnostics' as const, label: 'Diagnostics', icon: Stethoscope },
   ];
 
   return (
@@ -298,6 +306,8 @@ export default function DocumentRAGInterface() {
             <LibraryView key={libraryVersion} apiUrl={apiUrl} />
           )}
           {view === 'activity' && <ActivityView apiUrl={apiUrl} />}
+          {view === 'settings' && <SettingsView apiUrl={apiUrl} />}
+          {view === 'diagnostics' && <DiagnosticsView apiUrl={apiUrl} />}
         </section>
       )}
 
