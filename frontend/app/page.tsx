@@ -23,7 +23,7 @@ import {
 import { streamQuery } from '@/lib/streamQuery';
 import { apiRequest as callApi } from '@/lib/api';
 import { dismissSetup, isSetupDismissed } from '@/lib/setup';
-import type { ModelListResponse } from '@/lib/types';
+import type { Readiness } from '@/lib/types';
 import ActivityView from '@/app/components/ActivityView';
 import DiagnosticsView from '@/app/components/DiagnosticsView';
 import FirstRunSetup from '@/app/components/FirstRunSetup';
@@ -133,12 +133,20 @@ export default function DocumentRAGInterface() {
       setNeedsSetup(false);
       return;
     }
-    // Setup is derived from the backend rather than a stored flag, so it
-    // reappears if the required models are ever removed.
-    void callApi<ModelListResponse>('/models', apiUrl)
+    // Derived from the backend rather than a stored flag, so setup reappears
+    // if a dependency later goes missing. Embeddings are the only hard
+    // requirement: without Ollama the app still imports and searches, so its
+    // absence guides rather than blocks.
+    void callApi<Readiness>('/readiness', apiUrl)
       .then((response) => {
-        const missing = response.data?.missing_models ?? [];
-        setNeedsSetup(!response.ok || response.data?.status === 'error' || missing.length > 0);
+        const capabilities = response.data?.capabilities;
+        if (!response.ok || !capabilities) {
+          setNeedsSetup(true);
+          return;
+        }
+        const embeddingsBroken = capabilities.embeddings?.status !== 'ready';
+        const generationMissing = capabilities.ollama?.status !== 'ready';
+        setNeedsSetup(embeddingsBroken || generationMissing);
       })
       // Show setup rather than spinning forever if the probe itself fails.
       .catch(() => setNeedsSetup(true));

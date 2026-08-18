@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, HardDrive, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { apiRequest, formatBytes } from '@/lib/api';
-import type { Diagnostics, ModelListResponse } from '@/lib/types';
+import type { Diagnostics, ModelListResponse, Readiness } from '@/lib/types';
 
 /** Free space below this makes indexing unreliable. */
 const LOW_DISK_BYTES = 2 * 1024 ** 3;
@@ -40,14 +40,17 @@ function Card({ title, children }: { title: React.ReactNode; children: React.Rea
 export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
   const [data, setData] = useState<Diagnostics | null>(null);
   const [models, setModels] = useState<ModelListResponse | null>(null);
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [diagnostics, modelList] = await Promise.all([
+    const [diagnostics, modelList, ready] = await Promise.all([
       apiRequest<Diagnostics>('/diagnostics', apiUrl),
       apiRequest<ModelListResponse>('/models', apiUrl),
+      apiRequest<Readiness>('/readiness', apiUrl),
     ]);
+    setReadiness(ready.ok ? (ready.data ?? null) : null);
 
     if (!diagnostics.ok || !diagnostics.data) {
       setError(diagnostics.error || 'Could not load diagnostics');
@@ -87,6 +90,7 @@ export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
     : 0;
   const lowDisk = data.disk.free_bytes < LOW_DISK_BYTES;
   const ollamaReady = models !== null && models.missing_models.length === 0;
+  const embeddings = readiness?.capabilities?.embeddings ?? null;
 
   return (
     <div className="space-y-5">
@@ -111,8 +115,30 @@ export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
         <Card
           title={
             <>
-              <StatusDot ok={ollamaReady} />
-              Ollama
+              <StatusDot ok={embeddings?.status === 'ready'} />
+              Embeddings
+            </>
+          }
+        >
+          <Row label="Provider" value={embeddings?.provider ?? '—'} />
+          <Row label="Model" value={embeddings?.model ?? '—'} />
+          <Row label="Dimensions" value={embeddings ? String(embeddings.dimensions ?? '—') : '—'} />
+          <Row
+            label="Needs external software"
+            value={embeddings ? (embeddings.requires_external_software ? 'yes' : 'no') : '—'}
+          />
+          {embeddings?.status === 'ready' && !embeddings.requires_external_software && (
+            <p className="mt-2 rounded-md border border-emerald-900 bg-emerald-950/30 p-2.5 text-xs text-emerald-100">
+              Import and search run entirely on this machine.
+            </p>
+          )}
+        </Card>
+
+        <Card
+          title={
+            <>
+              <StatusDot ok={ollamaReady} warn={!ollamaReady} />
+              Ollama <span className="text-xs font-normal text-zinc-500">generation only</span>
             </>
           }
         >
@@ -125,8 +151,8 @@ export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
             </p>
           )}
           {models === null && (
-            <p className="mt-2 rounded-md border border-red-900 bg-red-950/40 p-2.5 text-xs text-red-100">
-              Could not reach Ollama. Start it, then refresh.
+            <p className="mt-2 rounded-md border border-amber-900 bg-amber-950/40 p-2.5 text-xs text-amber-100">
+              Not reachable. Search still works; written answers do not.
             </p>
           )}
         </Card>

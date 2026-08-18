@@ -11,7 +11,13 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiRequest, formatBytes, streamModelPull, type PullEvent } from '@/lib/api';
-import type { ModelListResponse, RuntimeSettings, SettingsResponse } from '@/lib/types';
+import type {
+  EmbeddingsCapability,
+  ModelListResponse,
+  Readiness,
+  RuntimeSettings,
+  SettingsResponse,
+} from '@/lib/types';
 
 type PullState = {
   status: string;
@@ -34,16 +40,19 @@ export default function FirstRunSetup({
   const [models, setModels] = useState<ModelListResponse | null>(null);
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [profile, setProfile] = useState<string | null>(null);
+  const [embeddings, setEmbeddings] = useState<EmbeddingsCapability | null>(null);
   const [checking, setChecking] = useState(true);
   const [pulls, setPulls] = useState<Record<string, PullState>>({});
   const abortRef = useRef<AbortController | null>(null);
 
   const check = useCallback(async () => {
     setChecking(true);
-    const [modelList, settingsResponse] = await Promise.all([
+    const [modelList, settingsResponse, readiness] = await Promise.all([
       apiRequest<ModelListResponse>('/models', apiUrl),
       apiRequest<SettingsResponse>('/settings', apiUrl),
+      apiRequest<Readiness>('/readiness', apiUrl),
     ]);
+    setEmbeddings(readiness.data?.capabilities?.embeddings ?? null);
     // A failed listing means Ollama is unreachable, which is step one's whole
     // question — so it is state, not an error banner.
     setModels(modelList.ok ? (modelList.data ?? null) : null);
@@ -62,7 +71,11 @@ export default function FirstRunSetup({
 
   const ollamaReachable = models !== null && models.status !== 'error';
   const missing = models?.missing_models ?? [];
-  const ready = ollamaReachable && missing.length === 0;
+  // Embeddings are the only hard requirement. Ollama adds generated prose;
+  // without it the app still imports, searches, and cites.
+  const embeddingsReady = embeddings?.status === 'ready';
+  const generationReady = ollamaReachable && missing.length === 0;
+  const canContinue = embeddingsReady;
 
   const applyProfile = async (name: string) => {
     const chosen = settings?.model_profiles[name];
@@ -127,7 +140,28 @@ export default function FirstRunSetup({
         </p>
       </div>
 
-      {/* Step 1 — Ollama */}
+      {/* Search engine — bundled, so this is normally already satisfied */}
+      <div className={stepClass(!embeddingsReady)}>
+        <h3 className="flex items-center gap-2 font-medium text-white">
+          {checking ? (
+            <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+          ) : embeddingsReady ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+          ) : (
+            <XCircle className="h-4 w-4 text-red-300" />
+          )}
+          Search engine
+        </h3>
+        <p className="mt-1 text-sm text-zinc-400">
+          {checking
+            ? 'Checking the bundled embedding model…'
+            : embeddingsReady
+              ? `Ready — ${embeddings?.model} runs on this machine, no install needed.`
+              : 'The bundled embedding model could not be loaded.'}
+        </p>
+      </div>
+
+      {/* Optional — Ollama, for generated answers */}
       <div className={stepClass(!ollamaReachable)}>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -139,14 +173,14 @@ export default function FirstRunSetup({
               ) : (
                 <XCircle className="h-4 w-4 text-red-300" />
               )}
-              1. Ollama
+              Ollama <span className="text-xs font-normal text-zinc-500">optional</span>
             </h3>
             <p className="mt-1 text-sm text-zinc-400">
               {checking
                 ? 'Checking for a local Ollama daemon…'
                 : ollamaReachable
                   ? `Reachable at ${models?.ollama_url}`
-                  : 'Not reachable. Install Ollama and start it, then re-check.'}
+                  : 'Not installed. Search works without it; add it for written answers.'}
             </p>
           </div>
           <button
@@ -167,7 +201,7 @@ export default function FirstRunSetup({
 
       {/* Step 2 — profile */}
       <div className={stepClass(ollamaReachable && missing.length > 0)}>
-        <h3 className="font-medium text-white">2. Choose a model profile</h3>
+        <h3 className="font-medium text-white">Choose a model profile</h3>
         <p className="mt-1 text-sm text-zinc-400">
           Larger models answer better but need more memory.
         </p>
@@ -193,8 +227,8 @@ export default function FirstRunSetup({
       {/* Step 3 — download */}
       <div className={stepClass(ollamaReachable && missing.length > 0)}>
         <h3 className="flex items-center gap-2 font-medium text-white">
-          {ready && <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
-          3. Download models
+          {generationReady && <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
+          Download models
         </h3>
 
         {!ollamaReachable && (
@@ -282,19 +316,20 @@ export default function FirstRunSetup({
         </button>
         <button
           type="button"
-          disabled={!ready}
+          disabled={!canContinue}
           onClick={onComplete}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
         >
-          {ready ? 'Start using the app' : 'Finish setup to continue'}
+          {canContinue ? 'Start using the app' : 'Waiting for the search engine'}
         </button>
       </div>
 
-      {!ready && !checking && (
+      {!generationReady && !checking && canContinue && (
         <p className="flex items-start gap-2 text-xs text-zinc-500">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          You can skip setup and explore, but queries need a generation model and
-          indexing needs an embedding model.
+          Without Ollama you can still import and search documents and read cited
+          sources. Answers are written by the generation model, so they stay
+          unavailable until it is installed.
         </p>
       )}
     </div>

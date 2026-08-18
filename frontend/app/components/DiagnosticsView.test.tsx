@@ -45,6 +45,25 @@ function mockBackend({
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
+      if (String(url).includes('/readiness')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'ready',
+            capabilities: {
+              embeddings: {
+                status: 'ready',
+                provider: 'local',
+                model: 'all-MiniLM-L6-v2',
+                dimensions: 384,
+                requires_external_software: false,
+              },
+              ollama: { status: modelsOk ? 'ready' : 'error' },
+            },
+          }),
+        };
+      }
       if (String(url).includes('/models')) {
         return {
           ok: modelsOk,
@@ -111,11 +130,20 @@ describe('DiagnosticsView', () => {
     expect(await screen.findByText(/Missing: qwen3:4b/)).toBeTruthy();
   });
 
-  it('reports an unreachable Ollama', async () => {
+  it('reports an unreachable Ollama without implying search is broken', async () => {
     mockBackend({ modelsOk: false });
     render(<DiagnosticsView apiUrl="http://api" />);
 
-    expect(await screen.findByText(/Could not reach Ollama/i)).toBeTruthy();
+    expect(await screen.findByText(/Search still works; written answers do not/i)).toBeTruthy();
+  });
+
+  it('reports the embedding provider and that it needs nothing external', async () => {
+    mockBackend();
+    render(<DiagnosticsView apiUrl="http://api" />);
+
+    expect(await screen.findByText('all-MiniLM-L6-v2')).toBeTruthy();
+    expect(screen.getByText('384')).toBeTruthy();
+    expect(screen.getByText(/entirely on this machine/i)).toBeTruthy();
   });
 
   it('reports a non-writable vector store', async () => {

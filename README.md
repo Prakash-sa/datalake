@@ -8,6 +8,7 @@ A production-grade **Retrieval Augmented Generation (RAG) system** for intellige
 - **🔍 Semantic Search** - Find documents by meaning, not just keywords
 - **🤖 LLM-Powered Answers** - Generate context-aware responses from documents
 - **⚡ Real-time Ingestion** - Automated document processing via Airflow DAGs
+- **🔒 No prerequisites** - Import and search need no external software; embeddings run in-process
 - **🔒 Enterprise-Ready** - No external APIs, all local inference
 - **📊 Vector Database** - Efficient similarity search at scale
 - **🎨 Modern UI** - Intuitive Next.js frontend for document exploration

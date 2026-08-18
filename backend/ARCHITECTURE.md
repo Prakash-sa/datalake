@@ -153,6 +153,8 @@ searching work on a machine with nothing installed; Ollama is needed only for
 generated prose, and `query_documents` already degrades to returning cited
 context when it is absent. Readiness reports embeddings as a capability separate
 from Ollama, so "can I search" and "can I get an answer" are distinguishable.
+The desktop UI gates on the former only: first-run setup presents Ollama as an
+optional enhancement and lets the user proceed without it.
 
 The model ships inside the sidecar rather than being fetched on first run, which
 is what makes the offline claim true. `scripts/fetch_embedding_model.py` installs

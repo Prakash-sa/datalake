@@ -43,3 +43,21 @@ export type Diagnostics = {
     timestamp: string;
   };
 };
+
+export type EmbeddingsCapability = {
+  status: 'ready' | 'degraded' | 'error' | 'unknown';
+  provider: 'local' | 'ollama';
+  model: string;
+  dimensions: number | null;
+  requires_external_software: boolean;
+};
+
+export type Readiness = {
+  status: string;
+  capabilities: {
+    embeddings: EmbeddingsCapability;
+    ollama: { status: string; missing_models?: string[]; url?: string };
+    index?: { status: string; rebuild_required: boolean };
+    memory?: { documents?: number; catalog_documents?: number };
+  };
+};

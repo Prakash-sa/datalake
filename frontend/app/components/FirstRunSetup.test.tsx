@@ -12,10 +12,30 @@ function mockBackend({
   modelsOk = true,
   status = 'ready',
   missing = [] as string[],
+  embeddingsStatus = 'ready',
 } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
+      if (String(url).includes('/readiness')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'degraded',
+            capabilities: {
+              embeddings: {
+                status: embeddingsStatus,
+                provider: 'local',
+                model: 'all-MiniLM-L6-v2',
+                dimensions: 384,
+                requires_external_software: false,
+              },
+              ollama: { status: modelsOk && !missing.length ? 'ready' : 'error' },
+            },
+          }),
+        };
+      }
       if (String(url).includes('/models')) {
         return {
           ok: modelsOk,
@@ -59,11 +79,11 @@ afterEach(() => {
 });
 
 describe('FirstRunSetup', () => {
-  it('reports when Ollama cannot be reached', async () => {
+  it('reports when Ollama is absent without framing it as a failure', async () => {
     mockBackend({ modelsOk: false });
     renderSetup();
 
-    expect(await screen.findByText(/Not reachable/i)).toBeTruthy();
+    expect(await screen.findByText(/Search works without it/i)).toBeTruthy();
     expect(screen.getByText(/ollama serve/)).toBeTruthy();
   });
 
@@ -93,11 +113,41 @@ describe('FirstRunSetup', () => {
     expect(screen.getByText('Download')).toBeTruthy();
   });
 
-  it('blocks continuing until every required model is present', async () => {
-    mockBackend({ missing: ['qwen3:4b'] });
+  it('allows continuing without Ollama, since search does not need it', async () => {
+    mockBackend({ modelsOk: false });
     renderSetup();
 
-    const button = await screen.findByRole('button', { name: /Finish setup to continue/i });
+    const button = await screen.findByRole('button', { name: /Start using the app/i });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('explains what stays unavailable without Ollama', async () => {
+    mockBackend({ modelsOk: false });
+    renderSetup();
+
+    expect(await screen.findByText(/still import and search/i)).toBeTruthy();
+  });
+
+  it('marks the Ollama step optional', async () => {
+    mockBackend({ modelsOk: false });
+    renderSetup();
+
+    expect(await screen.findByText('optional')).toBeTruthy();
+  });
+
+  it('reports the bundled search engine as ready', async () => {
+    mockBackend();
+    renderSetup();
+
+    expect(await screen.findByText(/all-MiniLM-L6-v2 runs on this machine/i)).toBeTruthy();
+  });
+
+  it('blocks continuing only when the embedding model cannot load', async () => {
+    // This is the one genuine hard requirement.
+    mockBackend({ embeddingsStatus: 'error' });
+    renderSetup();
+
+    const button = await screen.findByRole('button', { name: /Waiting for the search engine/i });
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
