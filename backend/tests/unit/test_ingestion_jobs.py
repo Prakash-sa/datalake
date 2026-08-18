@@ -14,6 +14,8 @@ from rag_backend.domain.jobs import JobStatus
 
 
 class StubEmbeddings:
+    dimensions = 8
+
     def __init__(self, fail: bool = False):
         self.fail = fail
 
@@ -349,3 +351,54 @@ def test_reset_index_clears_vectors_and_restamps_the_fingerprint(jobs, rag, doc)
 
     assert rag.vector_store.count() == 0
     assert rag.stored_fingerprint()["embedding_provider"] == rag.embedding_provider_name
+
+
+def test_mismatch_is_caught_even_with_no_recorded_fingerprint(jobs, rag, doc):
+    # An index written before fingerprints existed has none to compare against,
+    # which is the ordinary upgrade case. The stored vectors still have a fixed
+    # width, so that is measured directly.
+    rag.vector_store.upsert(["legacy"], ["old"], [{"id": "legacy"}], [[0.1] * 1024])
+    rag.catalog.set_setting("index_fingerprint", None)
+    assert rag.stored_fingerprint() is None
+
+    compatibility = rag.check_index_compatibility()
+
+    assert compatibility["rebuild_required"] is True
+    assert compatibility["stored_dimensions"] == 1024
+
+
+def test_import_is_refused_when_only_the_stored_vectors_reveal_the_mismatch(jobs, rag, doc):
+    rag.vector_store.upsert(["legacy"], ["old"], [{"id": "legacy"}], [[0.1] * 1024])
+    rag.catalog.set_setting("index_fingerprint", None)
+
+    result = jobs.process_job(jobs.enqueue(str(doc))["id"])
+
+    assert result["status"] == JobStatus.FAILED
+    assert result["error_code"] == "index_model_mismatch"
+
+
+def test_rebuild_recovers_an_index_that_has_no_fingerprint(jobs, rag, doc):
+    jobs.process_job(jobs.enqueue(str(doc))["id"])
+    rag.vector_store.reset()
+    rag.vector_store.upsert(["legacy"], ["old"], [{"id": "legacy"}], [[0.1] * 1024])
+    rag.catalog.set_setting("index_fingerprint", None)
+
+    outcome = jobs.rebuild_all()
+    for job in outcome["jobs"]:
+        jobs.process_job(job["id"])
+
+    assert rag.vector_store.dimension() == StubEmbeddings.dimensions
+    assert rag.check_index_compatibility()["rebuild_required"] is False
+
+
+def test_dimension_is_none_for_an_empty_collection(rag):
+    assert rag.vector_store.dimension() is None
+
+
+def test_matching_dimensions_do_not_trigger_a_rebuild(jobs, rag, doc):
+    jobs.process_job(jobs.enqueue(str(doc))["id"])
+    rag.catalog.set_setting("index_fingerprint", None)
+
+    # No fingerprint, but the stored width matches the provider, so there is
+    # nothing to rebuild.
+    assert rag.check_index_compatibility()["rebuild_required"] is False

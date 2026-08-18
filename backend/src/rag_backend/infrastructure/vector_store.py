@@ -45,6 +45,26 @@ class ChromaVectorStore:
         )
         logger.info("Chroma collection '%s' ready at %s", COLLECTION_NAME, self.path)
 
+    def dimension(self) -> int | None:
+        """Width of the vectors already stored, or None when empty.
+
+        Read from the data rather than from recorded metadata, so it is correct
+        even for an index written before fingerprints existed.
+        """
+        try:
+            if self._collection.count() == 0:
+                return None
+            sample = self._collection.peek(limit=1)
+        except Exception as e:
+            logger.debug("Could not determine collection dimension: %s", e)
+            return None
+
+        embeddings = sample.get("embeddings") if sample else None
+        if embeddings is None or len(embeddings) == 0:
+            return None
+        first = embeddings[0]
+        return len(first) if first is not None else None
+
     def reset(self) -> None:
         """Drop and recreate the collection.
 

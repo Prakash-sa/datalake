@@ -208,6 +208,30 @@ class DocumentRAGService:
                     errors.append(f"Document {idx}: {e}")
                     logger.warning("Failed to index document %d: %s", idx, e)
 
+            # Compare what is about to be written against what the collection
+            # already holds. This is exact and needs no provider to declare its
+            # width, which covers a provider whose dimensions are unknown until
+            # it has embedded once.
+            if embeddings:
+                stored_width = self.vector_store.dimension()
+                new_width = len(embeddings[0])
+                if stored_width is not None and stored_width != new_width:
+                    logger.warning(
+                        "Index holds %d-dim vectors but the model produces %d",
+                        stored_width,
+                        new_width,
+                    )
+                    self.stats["errors"] += 1
+                    return {
+                        "status": "error",
+                        "code": str(ErrorCode.INDEX_MODEL_MISMATCH),
+                        "error": (
+                            f"The existing index holds {stored_width}-dimension vectors "
+                            f"but the current embedding model produces {new_width}. "
+                            "Rebuild the index to continue."
+                        ),
+                    }
+
             self.vector_store.upsert(ids, contents, metadatas, embeddings)
             self.stats["documents_indexed"] += len(ids)
             if ids:
@@ -621,10 +645,34 @@ class DocumentRAGService:
         return fingerprint
 
     def check_index_compatibility(self) -> dict[str, Any]:
-        """Report whether existing vectors match the running configuration."""
+        """Report whether existing vectors match the running configuration.
+
+        The recorded fingerprint is not sufficient on its own: an index written
+        before fingerprints existed has none, yet its vectors still have a fixed
+        width. The stored vectors are therefore measured directly, which is
+        ground truth and covers the upgrade case the fingerprint cannot.
+        """
         current = self.current_fingerprint()
-        result = compare(self.stored_fingerprint(), current)
-        return {**result, "current": current, "stored": self.stored_fingerprint()}
+        stored = self.stored_fingerprint()
+        result = compare(stored, current)
+
+        actual = self.vector_store.dimension()
+        expected = current.get("embedding_dimensions")
+        if actual is not None and expected and actual != expected:
+            changed = sorted({*result["changed"], "embedding_dimensions"})
+            result = {
+                **result,
+                "status": "mismatch",
+                "rebuild_required": True,
+                "changed": changed,
+            }
+
+        return {
+            **result,
+            "current": current,
+            "stored": stored,
+            "stored_dimensions": actual,
+        }
 
     # -- Observability --------------------------------------------------------
 

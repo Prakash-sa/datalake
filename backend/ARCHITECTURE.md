@@ -182,7 +182,14 @@ A Chroma collection's vector width is fixed when its first embedding is
 written, so a model change cannot be resolved by overwriting rows: the
 collection has to be recreated. Indexing therefore checks compatibility before
 embedding and refuses with `index_model_mismatch` and a remedy, rather than
-letting a dimension error surface from inside the driver. An empty index adopts
+letting a dimension error surface from inside the driver.
+
+Compatibility is decided from the vectors themselves, not only from the recorded
+fingerprint. An index written before fingerprints existed has none to compare
+against, which is the ordinary upgrade case, and a provider may not know its own
+width until it has embedded once. The stored collection is therefore measured
+directly, and the vectors about to be written are checked against it immediately
+before the upsert. An empty index adopts
 the new configuration silently, since nothing is at risk. `/jobs/rebuild` resets
 the collection and re-queues every catalogued document.
 
