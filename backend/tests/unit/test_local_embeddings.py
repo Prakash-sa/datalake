@@ -135,3 +135,10 @@ class TestProviderSelection:
 
         assert isinstance(provider, OllamaEmbeddingProvider)
         assert provider.health()["requires_external_software"] is True
+
+
+@requires_model
+def test_vector_width_matches_what_the_collection_will_expect(embedder):
+    # A mismatch here is what produced "Collection expecting embedding with
+    # dimension of 1024, got 384" when the provider changed.
+    assert len(embedder.embed_query("anything")) == embedder.dimensions

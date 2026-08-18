@@ -157,6 +157,25 @@ class DocumentRAGService:
         if not documents:
             return {"status": "success", "documents_indexed": 0}
 
+        compatibility = self.check_index_compatibility()
+        if compatibility["rebuild_required"]:
+            if self.vector_store.count() == 0:
+                # An empty index has nothing worth preserving, so adopt the new
+                # configuration rather than making the user ask for a rebuild.
+                self.reset_index()
+            else:
+                changed = ", ".join(compatibility["changed"])
+                logger.warning("Index incompatible with current config (%s)", changed)
+                self.stats["errors"] += 1
+                return {
+                    "status": "error",
+                    "code": str(ErrorCode.INDEX_MODEL_MISMATCH),
+                    "error": (
+                        f"The existing index was built with a different embedding "
+                        f"configuration ({changed}). Rebuild the index to continue."
+                    ),
+                }
+
         try:
             logger.info("Indexing %d documents", len(documents))
             errors: list[str] = []
@@ -587,6 +606,18 @@ class DocumentRAGService:
         """Persist the current configuration as the index's fingerprint."""
         fingerprint = self.current_fingerprint()
         self.catalog.set_setting("index_fingerprint", fingerprint)
+        return fingerprint
+
+    def reset_index(self) -> dict[str, Any]:
+        """Recreate the vector collection and stamp it with the current config.
+
+        Used when the embedding model changes: the old vectors cannot be
+        compared against new queries, and the collection cannot accept vectors
+        of a different width.
+        """
+        self.vector_store.reset()
+        fingerprint = self.record_fingerprint()
+        logger.info("Vector index reset for %s", fingerprint["embedding_model"])
         return fingerprint
 
     def check_index_compatibility(self) -> dict[str, Any]:

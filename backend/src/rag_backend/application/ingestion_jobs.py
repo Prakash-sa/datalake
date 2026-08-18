@@ -119,6 +119,10 @@ class IngestionJobService:
         since moved are reported rather than queued, because reindexing needs
         the original bytes.
         """
+        # Recreate the collection first: its vector width is fixed, so a
+        # rebuild after a model change cannot write into the old one.
+        self._rag.reset_index()
+
         queued: list[dict[str, Any]] = []
         missing: list[str] = []
 
@@ -230,9 +234,12 @@ class IngestionJobService:
                 ]
             )
             if index_result.get("status") == "error":
+                # Preserve the specific code the indexer reported; substituting a
+                # generic one would hide, for example, an index/model mismatch
+                # whose remedy is a rebuild rather than a retry.
                 return self._fail(
                     job_id,
-                    ErrorCode.EMBEDDING_FAILED,
+                    index_result.get("code") or ErrorCode.EMBEDDING_FAILED,
                     index_result.get("error", "Embedding failed"),
                 )
             indexed = index_result.get("documents_indexed", 0)

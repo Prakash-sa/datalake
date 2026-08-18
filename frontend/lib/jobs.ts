@@ -65,6 +65,8 @@ export function explainErrorCode(code: string | null): string | null {
       // Embeddings run locally by default, so this must not assume Ollama.
       // Diagnostics reports which provider is active and its status.
       return 'The document could not be embedded. Check the embedding provider in Diagnostics.';
+    case 'index_model_mismatch':
+      return 'The index was built with a different embedding model. Rebuild it to continue.';
     case 'model_unavailable':
       return 'A required model is unavailable. Check Diagnostics, then retry.';
     case 'no_extractable_text':

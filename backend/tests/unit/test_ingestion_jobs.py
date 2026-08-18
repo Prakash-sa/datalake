@@ -284,3 +284,68 @@ def test_changing_the_embedding_model_reports_a_rebuild(jobs, rag, doc):
     rag.embedding_model = "a-different-model"
 
     assert rag.check_index_compatibility()["rebuild_required"] is True
+
+
+OLD_OLLAMA_FINGERPRINT = {
+    "embedding_provider": "ollama",
+    "embedding_model": "qwen3-embedding:0.6b",
+    "embedding_digest": "sha256:old",
+    "embedding_dimensions": 1024,
+    "chunker_version": "recursive-char-v1",
+    "parser_version": "local-parser-v1",
+    "index_schema_version": 1,
+}
+
+
+def _simulate_old_index(rag) -> None:
+    """Make the catalog look like an index built by a different model."""
+    rag.catalog.set_setting("index_fingerprint", OLD_OLLAMA_FINGERPRINT)
+
+
+def test_import_is_refused_when_the_index_was_built_by_another_model(jobs, rag, doc):
+    # Chroma fixes a collection's vector width, so writing 384-dim vectors into
+    # a 1024-dim collection fails deep in the driver. Refuse earlier, with a
+    # remedy the user can act on.
+    jobs.process_job(jobs.enqueue(str(doc))["id"])
+    _simulate_old_index(rag)
+
+    result = jobs.process_job(jobs.enqueue(str(doc), force_reindex=True)["id"])
+
+    assert result["status"] == JobStatus.FAILED
+    assert result["error_code"] == "index_model_mismatch"
+    assert "Rebuild" in result["error"]
+
+
+def test_rebuild_recreates_the_collection_and_restores_search(jobs, rag, doc):
+    jobs.process_job(jobs.enqueue(str(doc))["id"])
+    _simulate_old_index(rag)
+    assert rag.check_index_compatibility()["rebuild_required"] is True
+
+    outcome = jobs.rebuild_all()
+    for job in outcome["jobs"]:
+        jobs.process_job(job["id"])
+
+    assert outcome["queued"] == 1
+    assert rag.check_index_compatibility()["rebuild_required"] is False
+    assert rag.vector_store.count() >= 1
+
+
+def test_an_empty_index_adopts_the_new_configuration_silently(jobs, rag, doc):
+    # Nothing is at risk in an empty index, so requiring an explicit rebuild
+    # would be friction for no benefit.
+    _simulate_old_index(rag)
+
+    result = jobs.process_job(jobs.enqueue(str(doc))["id"])
+
+    assert result["status"] == JobStatus.COMPLETE
+    assert rag.check_index_compatibility()["rebuild_required"] is False
+
+
+def test_reset_index_clears_vectors_and_restamps_the_fingerprint(jobs, rag, doc):
+    jobs.process_job(jobs.enqueue(str(doc))["id"])
+    assert rag.vector_store.count() >= 1
+
+    rag.reset_index()
+
+    assert rag.vector_store.count() == 0
+    assert rag.stored_fingerprint()["embedding_provider"] == rag.embedding_provider_name

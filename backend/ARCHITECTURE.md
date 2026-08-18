@@ -178,6 +178,14 @@ cannot be compared against new queries, so `rebuild_required` is set and
 `/jobs/rebuild` re-queues every catalogued document. A changed chunker or parser
 is advisory: retrieval behaviour differs, but existing vectors remain valid.
 
+A Chroma collection's vector width is fixed when its first embedding is
+written, so a model change cannot be resolved by overwriting rows: the
+collection has to be recreated. Indexing therefore checks compatibility before
+embedding and refuses with `index_model_mismatch` and a remedy, rather than
+letting a dimension error surface from inside the driver. An empty index adopts
+the new configuration silently, since nothing is at risk. `/jobs/rebuild` resets
+the collection and re-queues every catalogued document.
+
 Digests matter because a tag can be repointed at new weights without its name
 changing. An unknown digest on either side is not treated as a mismatch, since
 an index built while Ollama was unreachable has none to record.

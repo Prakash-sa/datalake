@@ -700,3 +700,24 @@ docker-compose logs -f --tail=100
 
 Last Updated: January 2025
 Version: 1.0.0
+
+## "Collection expecting embedding with dimension of N, got M"
+
+The vector index was built with a different embedding model. A Chroma
+collection's vector width is fixed when it is first written, so the existing
+index cannot accept vectors from the new model.
+
+This is expected after switching `EMBEDDING_PROVIDER`, changing the embedding
+model, or upgrading from a release that used Ollama embeddings.
+
+Rebuild the index:
+
+- In the app, open **Activity** and use **Rebuild**, or
+- `curl -X POST http://127.0.0.1:<port>/jobs/rebuild`
+
+Rebuilding recreates the collection and re-queues every catalogued document, so
+the original files must still be at their recorded paths. Documents whose source
+has moved are reported in `missing_sources` and need re-importing.
+
+Newer builds refuse the import up front with `index_model_mismatch` and name the
+remedy, rather than surfacing the driver's dimension error.

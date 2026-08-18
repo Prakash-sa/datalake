@@ -45,6 +45,25 @@ class ChromaVectorStore:
         )
         logger.info("Chroma collection '%s' ready at %s", COLLECTION_NAME, self.path)
 
+    def reset(self) -> None:
+        """Drop and recreate the collection.
+
+        A collection's vector dimension is fixed when its first embedding is
+        written, so changing embedding model cannot be resolved by overwriting
+        rows. The collection itself has to be recreated.
+        """
+        try:
+            self._client.delete_collection(COLLECTION_NAME)
+        except Exception as e:
+            # Chroma raises when the collection is already absent, which is the
+            # desired end state anyway.
+            logger.debug("Collection delete during reset: %s", e)
+
+        self._collection = self._client.get_or_create_collection(
+            name=COLLECTION_NAME, metadata=COLLECTION_METADATA
+        )
+        logger.info("Vector collection '%s' reset", COLLECTION_NAME)
+
     def count(self) -> int:
         """Number of indexed chunks."""
         return self._collection.count()
