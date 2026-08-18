@@ -90,3 +90,12 @@ class EvalRequest(BaseModel):
 
     cases: list[EvalCase] = Field(..., min_length=1, max_length=50)
     k: int = Field(5, ge=1, le=100)
+
+
+class JobEnqueueRequest(BaseModel):
+    """Queue ingestion jobs for local files."""
+
+    paths: list[str] = Field(..., min_length=1, max_length=100)
+    force_reindex: bool = Field(
+        False, description="Re-parse and re-index files already in the catalog"
+    )

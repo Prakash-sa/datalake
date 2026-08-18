@@ -162,3 +162,37 @@ class EvalResponse(BaseModel):
     # Populated only for cases that declare relevant_chunk_ids.
     retrieval_metrics: dict[str, float] = {}
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class IngestionJob(BaseModel):
+    """One ingestion job and its progress."""
+
+    id: str
+    source_path: str
+    document_id: str | None = None
+    status: str
+    error_code: str | None = None
+    error: str | None = None
+    attempts: int = 0
+    chunks_total: int = 0
+    chunks_done: int = 0
+    force_reindex: bool = False
+    created_at: str
+    updated_at: str
+    finished_at: str | None = None
+
+
+class JobResponse(BaseModel):
+    """Single job response."""
+
+    status: str
+    job: IngestionJob
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class JobListResponse(BaseModel):
+    """Job listing response."""
+
+    status: str
+    jobs: list[IngestionJob]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())

@@ -73,7 +73,12 @@ use.
 | GET    | `/settings`          | Read runtime settings                    |
 | POST   | `/settings`          | Persist runtime settings                 |
 | POST   | `/documents/index`   | Index in-memory documents                |
-| POST   | `/documents/ingest`  | Ingest local files by path               |
+| POST   | `/documents/ingest`  | Ingest local files by path (synchronous) |
+| POST   | `/jobs`              | Queue background ingestion jobs          |
+| GET    | `/jobs`              | List jobs, filterable by status          |
+| GET    | `/jobs/{id}`         | Fetch one job                            |
+| POST   | `/jobs/{id}/cancel`  | Cancel a queued or running job           |
+| POST   | `/jobs/{id}/retry`   | Requeue a failed job                     |
 | GET    | `/documents`         | List catalog documents                   |
 | DELETE | `/documents/{id}`    | Delete a document and its chunks         |
 | POST   | `/documents/search`  | Hybrid dense + lexical search            |

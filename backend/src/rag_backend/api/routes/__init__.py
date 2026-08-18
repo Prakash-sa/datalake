@@ -6,6 +6,7 @@ from rag_backend.api.routes import (
     documents,
     evals,
     health,
+    jobs,
     models,
     search,
     settings,
@@ -17,6 +18,7 @@ api_router.include_router(health.router)
 api_router.include_router(models.router)
 api_router.include_router(settings.router)
 api_router.include_router(documents.router)
+api_router.include_router(jobs.router)
 api_router.include_router(search.router)
 api_router.include_router(stream.router)
 api_router.include_router(evals.router)

@@ -69,6 +69,8 @@ ignore = [
 "tests/*" = ["S101"]
 # Prompt text is a literal contract with the model; reflowing it changes the prompt.
 "src/rag_backend/application/prompts.py" = ["E501"]
+# FastAPI declares Query/Depends defaults in the signature by design.
+"src/rag_backend/api/routes/*.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"

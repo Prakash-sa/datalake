@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 
 from rag_backend.application.eval_service import EvalService
+from rag_backend.application.ingestion_jobs import IngestionJobService
 from rag_backend.application.rag_service import DocumentRAGService
 from rag_backend.settings import Settings
 
@@ -38,6 +39,18 @@ def get_eval_service(request: Request) -> EvalService:
     return service
 
 
+def get_job_service(request: Request) -> IngestionJobService:
+    """Return the ingestion job service, or 503 while it is unavailable."""
+    service = getattr(request.app.state, "job_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="RAG service unavailable",
+        )
+    return service
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RagServiceDep = Annotated[DocumentRAGService, Depends(get_rag_service)]
 EvalServiceDep = Annotated[EvalService, Depends(get_eval_service)]
+JobServiceDep = Annotated[IngestionJobService, Depends(get_job_service)]

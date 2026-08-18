@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from rag_backend.application.eval_service import EvalService
+from rag_backend.application.ingestion_jobs import IngestionJobService
 from rag_backend.application.rag_service import DocumentRAGService
 from rag_backend.settings import Settings
 
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     app.state.rag_service = None
     app.state.eval_service = None
+    app.state.job_service = None
 
     try:
         rag_service = DocumentRAGService(
@@ -39,6 +41,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.rag_service = rag_service
         app.state.eval_service = EvalService(rag_service)
+        job_service = IngestionJobService(rag_service)
+        # The application owns the single ingestion worker; enqueueing does
+        # not spawn one.
+        job_service.start()
+        app.state.job_service = job_service
         logger.info("RAG service initialized successfully")
     except Exception as e:
         # Start anyway so /health can report 503 and the desktop shell can
@@ -48,6 +55,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        # Stop the ingestion worker before tearing down the services it uses.
+        job_service = app.state.job_service
+        if job_service is not None:
+            job_service.shutdown()
         app.state.rag_service = None
         app.state.eval_service = None
+        app.state.job_service = None
         logger.info("RAG service shut down")

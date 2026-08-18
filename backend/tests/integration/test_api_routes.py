@@ -109,3 +109,44 @@ def test_stream_endpoint_validates_its_request(client):
 
 def test_stream_endpoint_is_in_the_openapi_schema(client):
     assert "/query/stream" in client.get("/openapi.json").json()["paths"]
+
+
+def test_enqueue_returns_accepted_with_queued_jobs(client):
+    response = client.post("/jobs", json={"paths": ["/tmp/a.md", "/tmp/b.md"]})
+
+    assert response.status_code == 202
+    jobs = response.json()["jobs"]
+    assert len(jobs) == 2
+    assert all(job["status"] == "queued" for job in jobs)
+
+
+def test_enqueue_rejects_an_empty_path_list(client):
+    assert client.post("/jobs", json={"paths": []}).status_code == 422
+
+
+def test_jobs_can_be_listed_and_filtered(client):
+    client.post("/jobs", json={"paths": ["/tmp/a.md"]})
+
+    assert len(client.get("/jobs").json()["jobs"]) == 1
+    assert client.get("/jobs", params={"status": "complete"}).json()["jobs"] == []
+
+
+def test_unknown_job_returns_404(client):
+    assert client.get("/jobs/nope").status_code == 404
+    assert client.post("/jobs/nope/cancel").status_code == 404
+    assert client.post("/jobs/nope/retry").status_code == 404
+
+
+def test_job_can_be_cancelled(client):
+    job_id = client.post("/jobs", json={"paths": ["/tmp/a.md"]}).json()["jobs"][0]["id"]
+
+    response = client.post(f"/jobs/{job_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["job"]["status"] == "cancelled"
+
+
+def test_job_endpoints_are_in_the_openapi_schema(client):
+    paths = client.get("/openapi.json").json()["paths"]
+    for expected in ("/jobs", "/jobs/{job_id}", "/jobs/{job_id}/cancel", "/jobs/{job_id}/retry"):
+        assert expected in paths

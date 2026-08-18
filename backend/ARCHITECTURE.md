@@ -31,8 +31,9 @@ layers know about inner ones, never the reverse.
 ### `domain/`
 
 Entities and value objects (`Document`, `SearchResult`, `QueryResult`,
-`EngineStats`) as plain dataclasses with validation in `__post_init__`. No
-framework imports, no I/O.
+`EngineStats`) as plain dataclasses with validation in `__post_init__`, plus
+`jobs.py`, which defines the ingestion state machine and its legal transitions.
+No framework imports, no I/O.
 
 ### `application/`
 
@@ -45,6 +46,7 @@ Use cases and orchestration.
 | `retrieval.py`         | Reciprocal-rank fusion — pure functions, no I/O            |
 | `prompts.py`           | Versioned prompt templates and context rendering           |
 | `eval_service.py`      | Deterministic release-gating checks and retrieval metrics  |
+| `ingestion_jobs.py`    | Persistent job queue and single background worker          |
 | `citations.py`         | Citation parsing and range validation - pure functions     |
 | `metrics.py`           | Hit rate, recall, MRR, nDCG - pure functions                |
 
@@ -92,6 +94,29 @@ There are no module-level singletons. Wiring happens explicitly:
 
 Middleware order matters: CORS is registered last so it wraps the auth
 middleware, letting preflight `OPTIONS` requests through before token checks.
+
+## Ingestion jobs
+
+Imports run through a persisted state machine:
+
+```text
+queued -> parsing -> chunking -> embedding -> committing -> complete
+                                          \-> failed / cancelled
+```
+
+Every transition is written to SQLite, so progress survives a restart and the UI
+can render per-document status, actionable error codes, retry, and cancel.
+Transitions are validated in `domain/jobs.py` as pure logic.
+
+A single worker thread drains the queue. Ingestion is I/O bound on Ollama and
+Chroma, and Chroma expects one writer, so concurrency would add risk without
+throughput. The application owns the worker: `lifespan` starts it and stops it,
+and `enqueue()` deliberately does not spawn one, which keeps the queue drivable
+synchronously in tests.
+
+Cancellation is checked at stage boundaries, so a cancelled import stops between
+stages rather than leaving a half-committed index. Only failed jobs can be
+retried; a cancelled job stays cancelled, since stopping it was deliberate.
 
 ## Streaming
 

@@ -47,6 +47,10 @@ class CatalogStore:
             if current < 2:
                 self._create_v2(conn)
                 self._record_migration(conn, 2)
+                current = 2
+            if current < 3:
+                self._create_v3(conn)
+                self._record_migration(conn, 3)
 
     @staticmethod
     def _record_migration(conn: sqlite3.Connection, version: int) -> None:
@@ -144,6 +148,30 @@ class CatalogStore:
                 error_code TEXT,
                 created_at TEXT NOT NULL
             );
+            """
+        )
+
+    @staticmethod
+    def _create_v3(conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS ingestion_jobs (
+                id TEXT PRIMARY KEY,
+                source_path TEXT NOT NULL,
+                document_id TEXT,
+                status TEXT NOT NULL,
+                error_code TEXT,
+                error TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                chunks_total INTEGER NOT NULL DEFAULT 0,
+                chunks_done INTEGER NOT NULL DEFAULT 0,
+                force_reindex INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                finished_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_jobs_status
+                ON ingestion_jobs (status, created_at);
             """
         )
 
@@ -345,3 +373,97 @@ class CatalogStore:
         result = dict(row)
         result["metadata"] = json.loads(result.pop("metadata_json"))
         return result
+
+    # -- Ingestion jobs -------------------------------------------------------
+
+    def create_job(
+        self, job_id: str, source_path: str, force_reindex: bool = False
+    ) -> dict[str, Any]:
+        """Enqueue a new ingestion job."""
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO ingestion_jobs (
+                    id, source_path, status, force_reindex, created_at, updated_at
+                )
+                VALUES (?, ?, 'queued', ?, ?, ?)
+                """,
+                (job_id, source_path, int(force_reindex), now, now),
+            )
+        job = self.get_job(job_id)
+        assert job is not None
+        return job
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        """Fetch a single job, or None when it does not exist."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM ingestion_jobs WHERE id = ?", (job_id,)).fetchone()
+        return self._job_from_row(row) if row else None
+
+    def list_jobs(
+        self, statuses: Iterable[str] | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """List jobs newest first, optionally filtered by status."""
+        query = "SELECT * FROM ingestion_jobs"
+        params: list[Any] = []
+        status_list = list(statuses or [])
+        if status_list:
+            placeholders = ",".join("?" for _ in status_list)
+            query += f" WHERE status IN ({placeholders})"
+            params.extend(status_list)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._job_from_row(row) for row in rows]
+
+    def update_job(self, job_id: str, **fields: Any) -> dict[str, Any] | None:
+        """Patch a job's mutable columns and bump updated_at."""
+        allowed = {
+            "status",
+            "document_id",
+            "error_code",
+            "error",
+            "attempts",
+            "chunks_total",
+            "chunks_done",
+            "finished_at",
+        }
+        updates = {key: value for key, value in fields.items() if key in allowed}
+        if not updates:
+            return self.get_job(job_id)
+
+        updates["updated_at"] = datetime.now(UTC).isoformat()
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE ingestion_jobs SET {assignments} WHERE id = ?",
+                (*updates.values(), job_id),
+            )
+        return self.get_job(job_id)
+
+    def delete_job(self, job_id: str) -> bool:
+        """Remove a job record. Returns False when it did not exist."""
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM ingestion_jobs WHERE id = ?", (job_id,))
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _job_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "source_path": row["source_path"],
+            "document_id": row["document_id"],
+            "status": row["status"],
+            "error_code": row["error_code"],
+            "error": row["error"],
+            "attempts": row["attempts"],
+            "chunks_total": row["chunks_total"],
+            "chunks_done": row["chunks_done"],
+            "force_reindex": bool(row["force_reindex"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "finished_at": row["finished_at"],
+        }
