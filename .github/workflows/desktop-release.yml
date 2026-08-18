@@ -34,6 +34,10 @@ jobs:
         run: npm ci
       - name: Install backend dependencies
         run: python -m pip install "../backend[packaging]"
+      - name: Fetch the bundled embedding model
+        # Shipped in the installer so a fresh machine can index and search with
+        # no external software present.
+        run: python ../backend/scripts/fetch_embedding_model.py
       - name: Build desktop package
         run: npm run dist
       - name: Generate SHA-256 checksums

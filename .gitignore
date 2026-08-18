@@ -76,6 +76,9 @@ docker-compose.override.yml
 compose/.env
 volumes/
 
+# Bundled at build time by backend/scripts/fetch_embedding_model.py.
+backend/src/rag_backend/models/
+
 # ---- Local data stores ----
 chroma_db/
 chroma_data/

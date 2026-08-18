@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="qwen3:4b", alias="LLM_MODEL")
     llm_temperature: float = Field(default=0.1, ge=0.0, le=1.0, alias="LLM_TEMPERATURE")
 
+    # Embeddings. "local" runs in-process via ONNX and needs no external
+    # software; "ollama" delegates to the daemon. Switching invalidates the
+    # index, which the fingerprint enforces.
+    embedding_provider: Literal["local", "ollama"] = Field(
+        default="local", alias="EMBEDDING_PROVIDER"
+    )
+    local_embedding_model_dir: str | None = Field(default=None, alias="LOCAL_EMBEDDING_MODEL_DIR")
+
     # Local storage
     chroma_path: str = Field(default="./chroma_db", alias="CHROMA_PATH")
     app_data_dir: str = Field(default=".", alias="APP_DATA_DIR")
@@ -97,6 +105,18 @@ class Settings(BaseSettings):
     def allowed_origins(self) -> list[str]:
         """CORS origins parsed from the comma-separated environment value."""
         return [o.strip() for o in self.allowed_origins_raw.split(",") if o.strip()]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def resolved_local_embedding_model_dir(self) -> str:
+        """Where the bundled ONNX embedding model lives.
+
+        Defaults beside the package so a PyInstaller bundle and a source
+        checkout resolve the same way.
+        """
+        if self.local_embedding_model_dir:
+            return self.local_embedding_model_dir
+        return str(Path(__file__).resolve().parent / "models" / "all-MiniLM-L6-v2")
 
     @computed_field  # type: ignore[prop-decorator]
     @property

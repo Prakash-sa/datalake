@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from langchain_ollama import OllamaEmbeddings, OllamaLLM
+from langchain_ollama import OllamaLLM
 
 from rag_backend.application.citations import validate_citations
 from rag_backend.application.ingestion_service import (
@@ -48,6 +48,7 @@ from rag_backend.errors import (
     classify_ollama_exception,
 )
 from rag_backend.infrastructure.catalog_store import CatalogStore
+from rag_backend.infrastructure.embeddings import build_embedding_provider
 from rag_backend.infrastructure.ollama_client import OllamaClient
 from rag_backend.infrastructure.vector_store import ChromaVectorStore, normalize_metadata
 
@@ -77,6 +78,8 @@ class DocumentRAGService:
         chroma_path: str = "./chroma_db",
         app_db_path: str = "./app.db",
         context_token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
+        embedding_provider: str = "local",
+        local_embedding_model_dir: str | None = None,
     ) -> None:
         if not 0.0 <= temperature <= 1.0:
             raise ValueError("Temperature must be between 0.0 and 1.0")
@@ -90,11 +93,22 @@ class DocumentRAGService:
         self.context_token_budget = context_token_budget
 
         self.catalog = CatalogStore(app_db_path)
-        self.ollama = OllamaClient(ollama_url, [embedding_model, llm_model])
+        self.embedding_provider_name = embedding_provider
+        # Only the generation model is required from Ollama when embeddings run
+        # locally, so a missing embedding model must not be reported as missing.
+        required = [llm_model] if embedding_provider == "local" else [embedding_model, llm_model]
+        self.ollama = OllamaClient(ollama_url, required)
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
 
         try:
-            self.embeddings = OllamaEmbeddings(model=embedding_model, base_url=ollama_url)
+            self.embeddings = build_embedding_provider(
+                embedding_provider,
+                ollama_model=embedding_model,
+                ollama_url=ollama_url,
+                local_model_dir=local_embedding_model_dir
+                or str(Path(__file__).resolve().parents[1] / "models" / "all-MiniLM-L6-v2"),
+                ollama_client=self.ollama,
+            )
             self.llm = OllamaLLM(model=llm_model, base_url=ollama_url, temperature=temperature)
             self.vector_store = ChromaVectorStore(chroma_path)
         except Exception as e:
@@ -552,9 +566,14 @@ class DocumentRAGService:
 
     def current_fingerprint(self) -> dict[str, Any]:
         """Describe the configuration this process would index with."""
+        local = self.embedding_provider_name == "local"
         return build_fingerprint(
-            embedding_model=self.embedding_model,
-            embedding_digest=self.ollama.model_digest(self.embedding_model),
+            embedding_provider=self.embedding_provider_name,
+            embedding_model=getattr(self.embeddings, "model_name", self.embedding_model),
+            embedding_dimensions=getattr(self.embeddings, "dimensions", None) or None,
+            # A local model has no Ollama digest; its identity is the model name
+            # and dimensions, which are already compared.
+            embedding_digest=None if local else self.ollama.model_digest(self.embedding_model),
             chunker_version=CHUNKER_VERSION,
             parser_version=PARSER_VERSION,
         )
@@ -642,6 +661,7 @@ class DocumentRAGService:
                     "catalog_path": self.app_db_path,
                 },
                 "ollama": ollama,
+                "embeddings": self.embeddings.health(),
                 "index": self.check_index_compatibility(),
                 "eval": {
                     "status": "enabled",

@@ -15,6 +15,7 @@ def fp(**overrides):
         embedding_digest="sha256:abc",
         chunker_version="recursive-char-v1",
         parser_version="local-parser-v1",
+        embedding_dimensions=384,
     )
     return {**base, **overrides}
 
@@ -88,3 +89,28 @@ def test_rebuild_takes_precedence_over_advisory():
 
     assert result["status"] == "mismatch"
     assert result["rebuild_required"] is True
+
+
+def test_switching_embedding_provider_requires_a_rebuild():
+    # Local and Ollama produce different vector spaces entirely.
+    result = compare(fp(embedding_provider="local"), fp(embedding_provider="ollama"))
+
+    assert result["rebuild_required"] is True
+    assert "embedding_provider" in result["changed"]
+
+
+def test_changing_embedding_dimensions_requires_a_rebuild():
+    # 384-dim MiniLM vectors cannot be compared with 1024-dim Qwen vectors.
+    result = compare(fp(embedding_dimensions=384), fp(embedding_dimensions=1024))
+
+    assert result["rebuild_required"] is True
+    assert "embedding_dimensions" in result["changed"]
+
+
+def test_unknown_dimensions_are_not_a_mismatch():
+    # The Ollama provider does not know its dimensions until it embeds once.
+    assert compare(fp(embedding_dimensions=None), fp())["rebuild_required"] is False
+
+
+def test_fingerprint_defaults_to_the_local_provider():
+    assert fp()["embedding_provider"] == "local"

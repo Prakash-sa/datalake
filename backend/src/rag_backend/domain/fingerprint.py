@@ -15,7 +15,13 @@ from typing import Any
 INDEX_SCHEMA_VERSION = 1
 
 #: Fields that, if changed, invalidate every existing vector.
-REBUILD_FIELDS = ("embedding_model", "embedding_digest", "index_schema_version")
+REBUILD_FIELDS = (
+    "embedding_provider",
+    "embedding_model",
+    "embedding_digest",
+    "embedding_dimensions",
+    "index_schema_version",
+)
 
 #: Fields that change retrieval behaviour but not the vectors themselves.
 ADVISORY_FIELDS = ("chunker_version", "parser_version")
@@ -26,9 +32,13 @@ def build_fingerprint(
     embedding_digest: str | None,
     chunker_version: str,
     parser_version: str,
+    embedding_provider: str = "local",
+    embedding_dimensions: int | None = None,
 ) -> dict[str, Any]:
     """Describe the configuration that produced an index."""
     return {
+        "embedding_provider": embedding_provider,
+        "embedding_dimensions": embedding_dimensions,
         "embedding_model": embedding_model,
         "embedding_digest": embedding_digest,
         "chunker_version": chunker_version,
@@ -58,7 +68,10 @@ def compare(stored: dict[str, Any] | None, current: dict[str, Any]) -> dict[str,
     changed = []
     for field in REBUILD_FIELDS:
         old, new = stored.get(field), current.get(field)
-        if field == "embedding_digest" and (not old or not new):
+        # Unknown values on either side cannot prove a mismatch: an index
+        # built while Ollama was unreachable records no digest, and the Ollama
+        # provider does not know its dimensions until it embeds.
+        if field in ("embedding_digest", "embedding_dimensions") and (not old or not new):
             continue
         if old != new:
             changed.append(field)

@@ -139,6 +139,30 @@ A size-rotating file handler writes to `<APP_DATA_DIR>/logs`, bounding disk use
 at `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)`. An unwritable log directory is
 logged and skipped rather than preventing startup.
 
+## Embeddings
+
+Two providers share one interface, selected by `EMBEDDING_PROVIDER`:
+
+| Provider | Runtime | Needs Ollama |
+| --- | --- | --- |
+| `local` (default) | all-MiniLM-L6-v2, 384-dim, ONNX Runtime in-process | no |
+| `ollama` | whatever model the daemon serves | yes |
+
+The local provider is what removes the external prerequisite. Importing and
+searching work on a machine with nothing installed; Ollama is needed only for
+generated prose, and `query_documents` already degrades to returning cited
+context when it is absent. Readiness reports embeddings as a capability separate
+from Ollama, so "can I search" and "can I get an answer" are distinguishable.
+
+The model ships inside the sidecar rather than being fetched on first run, which
+is what makes the offline claim true. `scripts/fetch_embedding_model.py` installs
+it at build time, verifying the archive against a published SHA-256. A bundle
+missing its model falls back to Ollama rather than failing to start.
+
+Output was verified identical to Chroma's own ONNX implementation (cosine 1.0),
+so the two are interchangeable. Pooling ignores padding, so a vector does not
+depend on what else shared its batch.
+
 ## Index fingerprints
 
 Every write to the vector store stamps the index with the configuration that
@@ -146,7 +170,8 @@ produced it: embedding model, model digest, chunker and parser versions, and an
 index schema version. `domain/fingerprint.py` compares that stamp against the
 running configuration as pure logic.
 
-A changed embedding model, digest, or schema version means existing vectors
+A changed embedding provider, model, digest, dimension count, or schema
+version means existing vectors
 cannot be compared against new queries, so `rebuild_required` is set and
 `/jobs/rebuild` re-queues every catalogued document. A changed chunker or parser
 is advisory: retrieval behaviour differs, but existing vectors remain valid.

@@ -15,9 +15,13 @@ a = Analysis(
     [str(src_dir / 'rag_backend' / '__main__.py')],
     pathex=[str(src_dir)],
     binaries=[],
-    datas=[],
+    # The embedding model ships inside the sidecar; without it the app would
+    # need Ollama to index anything.
+    datas=[(str(src_dir / 'rag_backend' / 'models'), 'rag_backend/models')],
     hiddenimports=[
         'chromadb',
+        'onnxruntime',
+        'tokenizers',
         'langchain_ollama',
         'pydantic_settings',
         'uvicorn.logging',

@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             temperature=settings.llm_temperature,
             chroma_path=settings.chroma_path,
             app_db_path=settings.resolved_app_db_path,
+            embedding_provider=settings.embedding_provider,
+            local_embedding_model_dir=settings.resolved_local_embedding_model_dir,
         )
         app.state.rag_service = rag_service
         app.state.eval_service = EvalService(rag_service)

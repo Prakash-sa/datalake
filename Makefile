@@ -21,12 +21,16 @@ help: ## Show this help
 # --- Setup -------------------------------------------------------------------
 
 .PHONY: setup
-setup: setup-backend setup-frontend ## Install all dependencies
+setup: setup-backend fetch-model setup-frontend ## Install all dependencies
 
 .PHONY: setup-backend
 setup-backend: ## Create the backend venv and install it editable
 	cd $(BACKEND) && uv venv --python $(PY_VER) && \
 		uv pip install --python .venv/bin/python -e ".[dev]"
+
+.PHONY: fetch-model
+fetch-model: ## Download the bundled local embedding model
+	cd $(BACKEND) && .venv/bin/python scripts/fetch_embedding_model.py
 
 .PHONY: setup-frontend
 setup-frontend: ## Install frontend dependencies

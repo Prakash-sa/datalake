@@ -21,6 +21,11 @@ dependencies = [
   "langchain-core>=0.2.0",
   "httpx>=0.25.2",
   "chromadb>=0.4.0",
+  # Imported directly by the local embedding provider. Present transitively
+  # via chromadb, but declared because this package uses them itself.
+  "onnxruntime>=1.17.0",
+  "tokenizers>=0.15.0",
+  "numpy>=1.26.0",
   "PyMuPDF>=1.24.0",
   "python-docx>=1.1.0",
   "gunicorn>=21.2.0",

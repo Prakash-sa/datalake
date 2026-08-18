@@ -34,6 +34,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Fetch the bundled embedding model
+        # A build artifact, not committed. Without it the local-embedding tests
+        # skip rather than fail, which would hide a regression.
+        run: python scripts/fetch_embedding_model.py
+
       - name: Lint
         run: ruff check src tests
 
