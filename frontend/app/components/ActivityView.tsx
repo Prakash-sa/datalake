@@ -184,9 +184,12 @@ export default function ActivityView({ apiUrl }: { apiUrl: string }) {
 
             {job.error && (
               <div className="mt-3 rounded-md border border-red-900 bg-red-950/40 p-3">
-                <p className="text-xs text-red-100">{hint || job.error}</p>
+                {/* The backend message is the fact; the hint is only guidance,
+                    so it must not replace what the backend actually reported. */}
+                <p className="text-xs text-red-100">{job.error}</p>
+                {hint && <p className="mt-1.5 text-xs text-red-200/80">{hint}</p>}
                 {job.error_code && (
-                  <code className="mt-1 block text-[11px] text-red-300/70">{job.error_code}</code>
+                  <code className="mt-1.5 block text-[11px] text-red-300/70">{job.error_code}</code>
                 )}
               </div>
             )}

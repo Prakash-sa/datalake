@@ -62,9 +62,11 @@ export function explainErrorCode(code: string | null): string | null {
     case 'unsupported_format':
       return 'This file type or path cannot be read.';
     case 'embedding_failed':
-      return 'Embedding failed — check that Ollama is running and the model is pulled.';
+      // Embeddings run locally by default, so this must not assume Ollama.
+      // Diagnostics reports which provider is active and its status.
+      return 'The document could not be embedded. Check the embedding provider in Diagnostics.';
     case 'model_unavailable':
-      return 'Ollama is unreachable. Start it, then retry.';
+      return 'A required model is unavailable. Check Diagnostics, then retry.';
     case 'no_extractable_text':
       return 'No readable text was found in this document.';
     case 'cancelled':

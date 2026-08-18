@@ -40,9 +40,14 @@ describe('progressFraction', () => {
 
 describe('explainErrorCode', () => {
   it('explains the codes the backend actually emits', () => {
-    expect(explainErrorCode('embedding_failed')).toContain('Ollama');
+    expect(explainErrorCode('embedding_failed')).toContain('embedding provider');
     expect(explainErrorCode('unsupported_format')).toContain('cannot be read');
     expect(explainErrorCode('duplicate')).toContain('Already indexed');
+  });
+
+  it('does not attribute an embedding failure to Ollama', () => {
+    // Embeddings run in-process by default, so naming Ollama would misdirect.
+    expect(explainErrorCode('embedding_failed')).not.toContain('Ollama');
   });
 
   it('returns null for unknown or absent codes', () => {

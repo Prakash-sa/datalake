@@ -71,14 +71,29 @@ describe('ActivityView', () => {
     expect(screen.queryByText('Cancel')).toBeNull();
   });
 
-  it('translates a structured error code into an actionable sentence', async () => {
-    mockJobs([job({ status: 'failed', error_code: 'embedding_failed', error: 'raw backend text' })]);
+  it('shows the backend message alongside the hint, not instead of it', async () => {
+    // The backend knows precisely what failed; a generic hint must not hide it.
+    mockJobs([
+      job({
+        status: 'failed',
+        error_code: 'embedding_failed',
+        error: 'Local embedding model not found in /models',
+      }),
+    ]);
     render(<ActivityView apiUrl="http://api" />);
 
-    // The hint replaces the raw message, but the code stays for support.
-    expect(await screen.findByText(/check that Ollama is running/i)).toBeTruthy();
+    expect(await screen.findByText('Local embedding model not found in /models')).toBeTruthy();
+    expect(screen.getByText(/Check the embedding provider in Diagnostics/i)).toBeTruthy();
     expect(screen.getByText('embedding_failed')).toBeTruthy();
-    expect(screen.queryByText('raw backend text')).toBeNull();
+  });
+
+  it('does not blame Ollama for an embedding failure', async () => {
+    // Embeddings run locally by default; pointing at Ollama would misdirect.
+    mockJobs([job({ status: 'failed', error_code: 'embedding_failed', error: 'boom' })]);
+    render(<ActivityView apiUrl="http://api" />);
+
+    await screen.findByText('boom');
+    expect(screen.queryByText(/Ollama is running/i)).toBeNull();
   });
 
   it('surfaces a backend failure', async () => {
