@@ -1,618 +1,348 @@
-# RAG Engine API Reference
+# API Reference
 
-## Base URL
-```
-http://localhost:8000
-```
+The backend is a local FastAPI service. In the desktop application it runs as a
+sidecar bound to `127.0.0.1` on a random port, and the Electron main process
+holds the bearer token — the renderer never talks to it directly.
+
+Run it standalone with `make backend-run` (default `http://127.0.0.1:8000`).
+Interactive docs are served at `/docs` when `DEBUG=true`.
+
+- [Authentication](#authentication)
+- [Errors](#errors)
+- [Health and diagnostics](#health-and-diagnostics)
+- [Documents](#documents)
+- [Ingestion jobs](#ingestion-jobs)
+- [Search and answers](#search-and-answers)
+- [Models](#models)
+- [Settings](#settings)
+- [Data transfer](#data-transfer)
+- [Evaluation](#evaluation)
 
 ## Authentication
-Currently no authentication required (add OAuth2 in production).
 
-## Endpoints
+When `RAG_API_TOKEN` is set, every request must carry it:
 
-### 1. Health Check
-
-**Endpoint:** `GET /health`
-
-**Description:** Check if the API is running and all services are connected.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "services": {
-    "database": "connected",
-    "cache": "connected",
-    "vector_db": "connected",
-    "llm": "connected"
-  },
-  "timestamp": "2025-01-10T10:00:00Z"
-}
+```
+Authorization: Bearer <token>
 ```
 
-**Status Codes:**
-- `200`: All services healthy
-- `503`: One or more services unavailable
+The desktop shell generates a fresh token per launch. Leave the variable unset
+for local development and the requirement is disabled.
+
+## Errors
+
+Failures carry a machine-readable code rather than an arbitrary message.
+
+| Code | Meaning | HTTP |
+| --- | --- | --- |
+| `validation_failed` | Request did not satisfy the schema | 400 |
+| `unsupported_format` | File type or path cannot be read | 415 |
+| `document_not_found` | No such document | 404 |
+| `parse_failed` | The file could not be parsed | 422 |
+| `no_extractable_text` | Parsed, but contained no text | 422 |
+| `model_unavailable` | Ollama unreachable, or the model is not installed | 503 |
+| `embedding_failed` | The document could not be embedded | 502 |
+| `generation_failed` | The model failed to produce an answer | 502 |
+| `generation_timeout` | Generation exceeded its deadline | 504 |
+| `retrieval_failed` | Search failed | 500 |
+| `no_relevant_evidence` | Nothing relevant was retrieved | 200 |
+| `index_model_mismatch` | The index was built by a different embedding model | 409 |
+| `storage_unavailable` | The data directory is not writable | 503 |
+| `cancelled` | The caller abandoned the request | 499 |
+
+Errors also carry `actionable`, indicating whether the user can resolve the
+problem themselves — by starting Ollama, pulling a model, or rebuilding the
+index — rather than by retrying unchanged.
 
 ---
 
-### 2. Search Documents
+## Health and diagnostics
 
-**Endpoint:** `POST /documents/search`
+### `GET /health`
 
-**Description:** Semantic search across indexed documents using similarity matching.
+Liveness. Returns 503 until the RAG service has initialised.
 
-**Request Body:**
+```json
+{ "status": "healthy", "timestamp": "2026-08-19T00:00:00+00:00" }
+```
+
+### `GET /stats`
+
+Counters and index sizes.
+
 ```json
 {
-  "query": "What is machine learning?",
-  "limit": 5,
-  "threshold": 0.5,
-  "metadata_filter": {
-    "source": "documents/technical.pdf"
+  "documents_indexed": 56, "queries_processed": 12, "errors": 0,
+  "total_documents": 56, "catalog_documents": 3,
+  "timestamp": "2026-08-19T00:00:00"
+}
+```
+
+### `GET /readiness`
+
+Capability report. Embeddings and generation are reported separately, so
+"can I search" and "can I get a written answer" are distinguishable.
+
+```json
+{
+  "status": "ready",
+  "capabilities": {
+    "embeddings": {
+      "status": "ready", "provider": "local",
+      "model": "all-MiniLM-L6-v2", "dimensions": 384,
+      "requires_external_software": false
+    },
+    "generation": {
+      "status": "ready", "model": "qwen3.5:latest",
+      "configured_model": "qwen3:4b", "selection": "auto-selected",
+      "installed_models": ["qwen3-embedding:0.6b", "qwen3.5:latest"]
+    },
+    "ollama": { "status": "ready", "missing_models": [] },
+    "index": { "status": "match", "rebuild_required": false },
+    "memory": { "status": "ready", "documents": 56 }
   }
 }
 ```
 
-**Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `query` | string | Yes | Search query text |
-| `limit` | integer | No | Max results (default: 5, max: 50) |
-| `threshold` | float | No | Similarity score threshold (0-1, default: 0.5) |
-| `metadata_filter` | object | No | Filter results by metadata |
+`selection` explains how the generation model was chosen: `configured` when the
+configured tag is installed, `configured-family` when another tag of the same
+family was used, or `auto-selected` when something else was substituted.
 
-**Response:**
-```json
-{
-  "query": "What is machine learning?",
-  "results": [
-    {
-      "id": "chunk_123",
-      "content": "Machine learning is a type of artificial intelligence...",
-      "score": 0.92,
-      "metadata": {
-        "source": "documents/technical.pdf",
-        "page": 42,
-        "chunk_index": 3,
-        "timestamp": "2025-01-10T09:00:00Z"
-      }
-    },
-    {
-      "id": "chunk_124",
-      "content": "ML models learn patterns from data...",
-      "score": 0.87,
-      "metadata": {
-        "source": "documents/intro.md",
-        "page": 1,
-        "chunk_index": 0,
-        "timestamp": "2025-01-10T09:00:00Z"
-      }
-    }
-  ],
-  "count": 2,
-  "execution_time_ms": 245
-}
-```
+### `GET /diagnostics`
 
-**Status Codes:**
-- `200`: Success
-- `400`: Invalid query or parameters
-- `503`: Vector database unavailable
-
-**Example cURL:**
-```bash
-curl -X POST http://localhost:8000/documents/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "What is machine learning?",
-    "limit": 5,
-    "threshold": 0.5
-  }'
-```
+Runtime versions, data paths, disk usage, storage writability, and stats. Never
+includes document text or prompts.
 
 ---
 
-### 3. Query with LLM Response
+## Documents
 
-**Endpoint:** `POST /query`
+### `GET /documents`
 
-**Description:** Search documents and generate an LLM response based on context.
+Lists indexed source documents with parser, chunker, and embedding model
+versions, plus chunk counts.
 
-**Request Body:**
+### `POST /documents/ingest`
+
+Ingest local files **synchronously**. Prefer `POST /jobs` for anything that
+should report progress.
+
 ```json
-{
-  "query": "Explain machine learning in simple terms",
-  "system_prompt": "You are a helpful assistant...",
-  "max_tokens": 500,
-  "temperature": 0.7,
-  "include_sources": true
-}
+{ "paths": ["/Users/me/notes.pdf"], "force_reindex": false }
 ```
 
-**Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `query` | string | Yes | Question or prompt |
-| `system_prompt` | string | No | Custom system prompt |
-| `max_tokens` | integer | No | Max response tokens (default: 1000) |
-| `temperature` | float | No | LLM creativity (0-1, default: 0.7) |
-| `include_sources` | boolean | No | Include source documents (default: true) |
+### `POST /documents/index`
 
-**Response:**
+Index already-prepared records. Each needs `id` and `content`.
+
 ```json
-{
-  "query": "Explain machine learning in simple terms",
-  "response": "Machine learning is a technology that allows computers to learn from data without being explicitly programmed...",
-  "sources": [
-    {
-      "id": "chunk_123",
-      "content": "Machine learning is a type of artificial intelligence...",
-      "score": 0.92,
-      "metadata": {
-        "source": "documents/technical.pdf",
-        "page": 42
-      }
-    }
-  ],
-  "model": "ollama/nomic-embed-text",
-  "execution_time_ms": 3456,
-  "tokens_used": 245
-}
+{ "documents": [{ "id": "doc-1", "content": "…", "metadata": {} }] }
 ```
 
-**Status Codes:**
-- `200`: Success
-- `400`: Invalid query
-- `503`: LLM or database unavailable
-- `408`: Request timeout (LLM inference too slow)
+Returns `index_model_mismatch` if the existing index was built by a different
+embedding model.
 
-**Example cURL:**
-```bash
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Explain machine learning",
-    "max_tokens": 500,
-    "temperature": 0.7
-  }'
-```
+### `DELETE /documents/{document_id}`
+
+Removes the catalog row, its chunks, and its vectors together. 404 if unknown.
 
 ---
 
-### 4. Index Document
+## Ingestion jobs
 
-**Endpoint:** `POST /documents/index`
+Imports run through a persisted state machine:
 
-**Description:** Manually index a document (usually done via Airflow).
-
-**Request Body:**
-```json
-{
-  "file_path": "documents/new-doc.pdf",
-  "content": "Full document content here...",
-  "metadata": {
-    "title": "New Document",
-    "author": "John Doe",
-    "date": "2025-01-10"
-  },
-  "chunk_size": 1000,
-  "chunk_overlap": 200
-}
+```
+queued → parsing → chunking → embedding → committing → complete
+                                      ↳ failed / cancelled
 ```
 
-**Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file_path` | string | Yes | Path in MinIO |
-| `content` | string | Yes | Document content |
-| `metadata` | object | No | Custom metadata |
-| `chunk_size` | integer | No | Characters per chunk (default: 1000) |
-| `chunk_overlap` | integer | No | Overlap between chunks (default: 200) |
+Progress survives a restart. Only failed jobs can be retried; a cancelled job
+stays cancelled.
 
-**Response:**
+### `POST /jobs` → `202`
+
+```json
+{ "paths": ["/Users/me/report.pdf"], "force_reindex": false }
+```
+
+### `GET /jobs`
+
+Newest first. Filter with `?status=failed&status=complete`, limit with `?limit=`.
+
 ```json
 {
   "status": "success",
-  "file_path": "documents/new-doc.pdf",
-  "chunks_created": 5,
-  "embeddings_generated": 5,
-  "indexed_at": "2025-01-10T10:00:00Z",
-  "execution_time_ms": 2345
+  "jobs": [{
+    "id": "job_9f2…", "source_path": "/Users/me/report.pdf",
+    "status": "complete", "chunks_total": 56, "chunks_done": 56,
+    "attempts": 1, "error_code": null, "finished_at": "2026-08-19T00:00:00+00:00"
+  }]
 }
 ```
 
-**Status Codes:**
-- `200`: Success
-- `400`: Missing required fields
-- `413`: Content too large
-- `503`: Database unavailable
+### `GET /jobs/{job_id}` · `POST /jobs/{job_id}/cancel` · `POST /jobs/{job_id}/retry`
+
+Cancellation takes effect at the next stage boundary, so a cancelled import
+never leaves a half-committed index.
+
+### `POST /jobs/rebuild` → `202`
+
+Recreates the vector collection and re-queues every catalogued document. Required
+after an embedding-model change. Documents whose source file has moved are
+returned in `missing_sources` rather than failing the request.
 
 ---
 
-### 5. Get Document Metadata
+## Search and answers
 
-**Endpoint:** `GET /documents/:doc_id`
+### `POST /documents/search`
 
-**Description:** Get metadata about an indexed document.
+Hybrid retrieval without generation. Works with no Ollama installed.
 
-**Path Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `doc_id` | string | Document chunk ID |
-
-**Response:**
 ```json
-{
-  "id": "chunk_123",
-  "document_id": "doc_456",
-  "source": "documents/technical.pdf",
-  "content_preview": "Machine learning is a type of...",
-  "metadata": {
-    "page": 42,
-    "chunk_index": 3,
-    "timestamp": "2025-01-10T09:00:00Z",
-    "embedding_model": "nomic-embed-text"
-  },
-  "chunk_count": 5,
-  "vector_dim": 768
-}
+{ "query": "how are rankings merged?", "k": 5, "min_score": 0.0 }
 ```
 
-**Status Codes:**
-- `200`: Success
-- `404`: Document not found
-- `503`: Database unavailable
-
----
-
-### 6. List Collections
-
-**Endpoint:** `GET /collections`
-
-**Description:** List all indexed document collections.
-
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | integer | 50 | Max results |
-| `offset` | integer | 0 | Pagination offset |
-
-**Response:**
-```json
-{
-  "collections": [
-    {
-      "name": "documents",
-      "document_count": 42,
-      "chunk_count": 1240,
-      "size_mb": 145.2,
-      "created_at": "2025-01-01T00:00:00Z",
-      "updated_at": "2025-01-10T10:00:00Z",
-      "metadata_fields": ["source", "page", "author"]
-    }
-  ],
-  "total": 1,
-  "limit": 50,
-  "offset": 0
-}
-```
-
-**Status Codes:**
-- `200`: Success
-- `503`: Vector database unavailable
-
----
-
-### 7. Delete Document
-
-**Endpoint:** `DELETE /documents/:doc_id`
-
-**Description:** Delete a document and its embeddings from the database.
-
-**Path Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `doc_id` | string | Document ID to delete |
-
-**Response:**
 ```json
 {
   "status": "success",
-  "deleted_id": "chunk_123",
-  "chunks_deleted": 5,
-  "execution_time_ms": 345
+  "results": [{
+    "id": "doc_a1b2_chunk_00003",
+    "content": "…",
+    "relevance_score": 0.94,
+    "metadata": { "source_name": "notes.pdf", "retrieval_sources": "dense,fts" }
+  }]
 }
 ```
 
-**Status Codes:**
-- `200`: Success
-- `404`: Document not found
-- `503`: Database unavailable
+`retrieval_sources` shows which retrievers found the chunk.
 
----
+### `POST /query`
 
-### 8. Batch Index
+Full pipeline: retrieve, budget the context, generate, validate citations.
 
-**Endpoint:** `POST /documents/batch-index`
-
-**Description:** Index multiple documents at once.
-
-**Request Body:**
-```json
-{
-  "documents": [
-    {
-      "file_path": "doc1.pdf",
-      "content": "...",
-      "metadata": {"title": "Doc 1"}
-    },
-    {
-      "file_path": "doc2.txt",
-      "content": "...",
-      "metadata": {"title": "Doc 2"}
-    }
-  ],
-  "parallel": true
-}
-```
-
-**Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `documents` | array | Array of document objects |
-| `parallel` | boolean | Process in parallel (default: true) |
-
-**Response:**
 ```json
 {
   "status": "success",
-  "total_documents": 2,
-  "successful": 2,
-  "failed": 0,
-  "results": [
-    {
-      "file_path": "doc1.pdf",
-      "status": "success",
-      "chunks_created": 5
-    },
-    {
-      "file_path": "doc2.txt",
-      "status": "success",
-      "chunks_created": 3
-    }
-  ],
-  "execution_time_ms": 5678
-}
-```
-
-**Status Codes:**
-- `200`: Completed (check results for individual failures)
-- `400`: Invalid request format
-- `503`: Database unavailable
-
----
-
-### 9. Statistics
-
-**Endpoint:** `GET /stats`
-
-**Description:** Get system statistics and performance metrics.
-
-**Response:**
-```json
-{
-  "system": {
-    "total_documents": 42,
-    "total_chunks": 1240,
-    "total_embeddings": 1240,
-    "database_size_mb": 145.2,
-    "indexed_at": "2025-01-10T10:00:00Z"
-  },
-  "performance": {
-    "avg_query_time_ms": 234,
-    "avg_embedding_time_ms": 45,
-    "p95_query_time_ms": 456,
-    "p99_query_time_ms": 789
-  },
-  "cache": {
-    "hit_rate": 0.78,
-    "size_mb": 52.3,
-    "entries": 1024
-  },
-  "health": {
-    "database": "healthy",
-    "cache": "healthy",
-    "llm": "healthy"
+  "answer": "Rankings are merged with reciprocal rank fusion [S1].",
+  "retrieved_documents": [ … ],
+  "document_count": 3,
+  "truncated_document_count": 2,
+  "processing_time_seconds": 4.1,
+  "citations": {
+    "valid": true, "citation_count": 1,
+    "cited_chunk_ids": ["doc_a1b2_chunk_00003"],
+    "invalid_indices": [], "uncited_source_indices": [2, 3],
+    "supplied_source_count": 3
   }
 }
 ```
 
-**Status Codes:**
-- `200`: Success
-- `503`: Some services unavailable
+`status` is `degraded` with a `code` when generation was unavailable; the
+response still carries retrieved, cited context. `truncated_document_count`
+reports documents dropped to fit the context budget. `invalid_indices` lists
+citations pointing outside the supplied sources.
+
+### `POST /query/stream`
+
+Same pipeline as server-sent events. Sources arrive before the first token so the
+UI can render citations while the answer streams. Disconnecting cancels
+generation.
+
+```
+data: {"event":"sources","documents":[…],"truncated_document_count":0}
+data: {"event":"token","text":"Rankings "}
+data: {"event":"done","status":"success","answer":"…","citations":{…}}
+data: {"event":"error","code":"model_unavailable","actionable":true}
+```
 
 ---
 
-## Error Responses
+## Models
 
-All error responses follow this format:
+### `GET /models`
+
+Installed models, the ones this backend requires, and anything missing.
+
+### `POST /models/pull`
+
+Blocking pull. Prefer the streaming form for anything user-facing.
+
+### `POST /models/pull/stream`
+
+Streams progress as SSE:
+
+```
+data: {"event":"progress","model":"qwen3:1.7b","status":"downloading",
+       "completed":128000000,"total":1100000000,"percent":11.6}
+data: {"event":"done","model":"qwen3:1.7b"}
+```
+
+`percent` is `null` for statuses that report no byte counts.
+
+---
+
+## Settings
+
+### `GET /settings` · `POST /settings`
 
 ```json
 {
-  "error": {
-    "code": "INVALID_QUERY",
-    "message": "Query string cannot be empty",
-    "details": {
-      "field": "query",
-      "reason": "required"
-    },
-    "timestamp": "2025-01-10T10:00:00Z",
-    "request_id": "req_abc123def"
-  }
+  "ollama_url": "http://127.0.0.1:11434",
+  "embedding_model": "qwen3-embedding:0.6b",
+  "llm_model": "qwen3:4b",
+  "temperature": 0.1,
+  "model_profiles": { "light": { … }, "balanced": { … } }
 }
 ```
 
-### Common Error Codes
-
-| Code | Status | Description |
-|------|--------|-------------|
-| `INVALID_QUERY` | 400 | Query validation failed |
-| `INVALID_PARAMETER` | 400 | Invalid parameter value |
-| `MISSING_FIELD` | 400 | Required field missing |
-| `NOT_FOUND` | 404 | Resource not found |
-| `CONFLICT` | 409 | Resource already exists |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `INTERNAL_ERROR` | 500 | Server error |
-| `SERVICE_UNAVAILABLE` | 503 | Database/service down |
-| `TIMEOUT` | 408 | Request timeout |
+Changes persist immediately but apply on restart, since models are constructed
+once at startup. Changing the embedding model invalidates the index and requires
+`POST /jobs/rebuild`.
 
 ---
 
-## Rate Limiting
+## Data transfer
 
-- **Requests/minute:** 60 (default)
-- **Concurrent requests:** 10
-- **Query timeout:** 30 seconds
-- **Max request size:** 10MB
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /data/backup` | Snapshot the catalog via SQLite's backup API |
+| `GET /data/backups` | List snapshots, newest first |
+| `POST /data/export` | Write a portable `.zip` of the catalog and a manifest |
+| `POST /data/import/inspect` | Read an archive's manifest without importing |
+| `POST /data/import` | Restore a catalog, backing up the current one first |
 
-Headers:
-```
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 59
-X-RateLimit-Reset: 2025-01-10T10:01:00Z
-```
-
----
-
-## Authentication (Production)
-
-Add OAuth2 authentication:
-
-```python
-# Example bearer token
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+Exports exclude vectors, which are reproducible from the sources and would
+dominate the archive size, so an import reports `reindex_required: true`.
 
 ---
 
-## Interactive Documentation
+## Evaluation
 
-Access OpenAPI/Swagger UI:
-```
-http://localhost:8000/docs
-```
+### `POST /eval`
 
-Access ReDoc alternative:
-```
-http://localhost:8000/redoc
-```
-
----
-
-## Code Examples
-
-### Python
-```python
-import requests
-import json
-
-API_URL = "http://localhost:8000"
-
-# Search documents
-response = requests.post(
-    f"{API_URL}/documents/search",
-    json={
-        "query": "machine learning",
-        "limit": 5
-    }
-)
-results = response.json()
-print(json.dumps(results, indent=2))
-
-# Query with LLM response
-response = requests.post(
-    f"{API_URL}/query",
-    json={
-        "query": "Explain machine learning",
-        "max_tokens": 500
-    }
-)
-response_data = response.json()
-print(response_data["response"])
-```
-
-### JavaScript/Node.js
-```javascript
-const API_URL = "http://localhost:8000";
-
-// Search documents
-async function search(query) {
-  const response = await fetch(`${API_URL}/documents/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: query,
-      limit: 5
-    })
-  });
-  return response.json();
-}
-
-// Query with response
-async function queryWithResponse(question) {
-  const response = await fetch(`${API_URL}/query`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: question,
-      max_tokens: 500
-    })
-  });
-  const data = await response.json();
-  return data.response;
-}
-
-// Usage
-search("machine learning").then(console.log);
-queryWithResponse("What is AI?").then(console.log);
-```
-
-### cURL
-```bash
-# Search
-curl -X POST http://localhost:8000/documents/search \
-  -H "Content-Type: application/json" \
-  -d '{"query":"machine learning","limit":5}'
-
-# Query
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"query":"What is AI?","max_tokens":500}'
-
-# Health check
-curl http://localhost:8000/health
-
-# Stats
-curl http://localhost:8000/stats
-```
-
----
-
-## Webhooks (Optional)
-
-Configure webhooks for async notifications:
+Deterministic release gating.
 
 ```json
 {
-  "event": "document.indexed",
-  "url": "https://example.com/webhook",
-  "events": ["document.indexed", "index.complete"],
-  "active": true
+  "k": 5,
+  "cases": [{
+    "id": "hybrid-retrieval",
+    "query": "How are dense and lexical results combined?",
+    "answer_contains": ["fusion"],
+    "min_documents": 1,
+    "min_relevance": 0.1,
+    "relevant_chunk_ids": ["retrieval-hybrid"]
+  }]
 }
 ```
 
----
+A case fails if required terms are missing, too few documents are retrieved,
+relevance is below threshold, or the answer cites a source it was never given.
 
-Last Updated: January 2025
-Version: 1.0.0
+When any case declares `relevant_chunk_ids`, the response includes aggregate
+`retrieval_metrics`: hit rate, recall, precision, nDCG at K, MRR, duplicate rate,
+and empty-result rate.
+
+Fixtures live in [`evals/`](../../evals/README.md).

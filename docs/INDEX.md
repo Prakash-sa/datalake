@@ -1,58 +1,39 @@
-# Documentation Index
+# Documentation
 
-Start with the [project README](../README.md) for setup and a tour of the
-repository. This index maps the rest.
+Start with the [project README](../README.md) for what this is, screenshots, and
+how to run it.
 
-## Architecture
-
-| Document | What it covers |
-| --- | --- |
-| [ARCHITECTURE.md](architecture/ARCHITECTURE.md) | System design, components, and data flow |
-| [ARCHITECTURE_DIAGRAMS.md](architecture/ARCHITECTURE_DIAGRAMS.md) | Rendered diagrams of the pipeline and services |
-| [SYSTEM_DESIGN_INTERVIEW.md](architecture/SYSTEM_DESIGN_INTERVIEW.md) | System design walkthrough in Q&A form |
-| [DESKTOP_RAG_PRODUCTION_PLAN.md](architecture/DESKTOP_RAG_PRODUCTION_PLAN.md) | Plan and rationale for the local-first desktop build |
-| [Backend architecture](../backend/ARCHITECTURE.md) | Backend layering, composition, and retrieval pipeline |
-
-## Decisions
+## Understanding the system
 
 | Document | What it covers |
 | --- | --- |
-| [ADR 0001](adr/0001-local-first-desktop-rag.md) | Why the product is a local-first desktop RAG application |
+| [Architecture](architecture/ARCHITECTURE.md) | Design principles, runtime, storage, retrieval, security boundary |
+| [Backend architecture](../backend/ARCHITECTURE.md) | Layering, composition, ingestion state machine, fingerprints |
+| [ADR 0001](adr/0001-local-first-desktop-rag.md) | Why local-first desktop, and how the decision was amended |
+| [Production plan](architecture/DESKTOP_RAG_PRODUCTION_PLAN.md) | The plan this was built against, with implementation status |
 
-## Reference
-
-| Document | What it covers |
-| --- | --- |
-| [API_REFERENCE.md](reference/API_REFERENCE.md) | REST endpoints with request and response examples |
-| [Backend README](../backend/README.md) | Endpoint table, configuration, and developer commands |
-
-## Operations
+## Using it
 
 | Document | What it covers |
 | --- | --- |
-| [QUICK_START_PRODUCTION.md](operations/QUICK_START_PRODUCTION.md) | Fastest path to a running production stack |
-| [DEPLOYMENT.md](operations/DEPLOYMENT.md) | Environment setup, Kubernetes, and cloud deployment |
-| [PIPELINE_GUIDE.md](operations/PIPELINE_GUIDE.md) | Running and monitoring the Airflow ingestion pipeline |
-| [RELEASE.md](operations/RELEASE.md) | Release, signing, and checksum process |
-| [TROUBLESHOOTING.md](operations/TROUBLESHOOTING.md) | Common failures and how to diagnose them |
+| [API reference](reference/API_REFERENCE.md) | Every endpoint, error code, and streaming format |
+| [Backend README](../backend/README.md) | Layout, configuration, developer commands |
+| [Evals](../evals/README.md) | Fixture corpus, eval cases, retrieval metrics |
+
+## Operating it
+
+| Document | What it covers |
+| --- | --- |
+| [Deployment](operations/DEPLOYMENT.md) | Desktop builds, container stack, backups, upgrades |
+| [Troubleshooting](operations/TROUBLESHOOTING.md) | Error codes and what to do about them |
+| [Pipeline guide](operations/PIPELINE_GUIDE.md) | The optional Airflow ingestion pipeline |
+| [Release](operations/RELEASE.md) | Release and signing process |
 
 ## Security and privacy
 
 | Document | What it covers |
 | --- | --- |
-| [SECURITY_THREAT_MODEL.md](security/SECURITY_THREAT_MODEL.md) | Assets, trust boundaries, and mitigations |
-| [PRIVACY.md](security/PRIVACY.md) | What is stored locally and what never leaves the machine |
-| [SECURITY.md](../SECURITY.md) | How to report a vulnerability |
-
-## Layout
-
-```
-docs/
-├── INDEX.md            # this file
-├── adr/                # architecture decision records
-├── architecture/       # system design and diagrams
-├── reference/          # API reference
-├── operations/         # deployment, pipeline, release, troubleshooting
-├── security/           # threat model and privacy
-└── assets/             # images used by the docs
-```
+| [Privacy](security/PRIVACY.md) | What runs locally, what is stored, what redaction does |
+| [Threat model](security/SECURITY_THREAT_MODEL.md) | Assets, trust boundaries, mitigations |
+| [Security policy](../SECURITY.md) | Security model and how to report a vulnerability |
+| [Third-party notices](../THIRD_PARTY_NOTICES.md) | Bundled software, the bundled model, and an unresolved licence conflict |

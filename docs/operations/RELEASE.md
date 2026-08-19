@@ -1,5 +1,15 @@
 # Release and Signing
 
+## Blockers
+
+Two things prevent a public binary release today:
+
+1. Signing and notarization are not configured, so artifacts are unsigned.
+2. An unresolved dependency licence conflict — see
+   [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md).
+
+Building and running from source is unaffected.
+
 ## Release Gates
 
 - Backend unit tests pass.

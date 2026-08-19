@@ -1,5 +1,17 @@
 # Production Plan: Cross-Platform Local RAG Desktop App
 
+> **Historical document.** This is the plan the project was built against, kept
+> for the reasoning behind each decision. Most of it is now implemented; the
+> per-section status notes below were written during the work and are marked
+> where they have been overtaken.
+>
+> For what exists today, read [ARCHITECTURE.md](ARCHITECTURE.md). Phases 0
+> through 6 are complete. Phase 7, signing and notarization, is not.
+>
+> One decision was reversed: Ollama is no longer a prerequisite. Embeddings run
+> in-process, so importing and searching need no external software. See
+> [ADR 0001](../adr/0001-local-first-desktop-rag.md).
+
 The project has the beginnings of an Electron interface and persistent RAG backend, but it is not yet installable as a self-contained desktop application. The most important architectural change is to make Electron own the complete application lifecycle: UI, Python backend process, local data directories, Ollama connectivity, upgrades, and shutdown.
 
 ## 1. Target Product Definition
@@ -265,7 +277,7 @@ Replace the single dense-vector query with:
 
 Do not add an LLM reranker to the default pipeline initially. It increases latency and memory consumption before the baseline retrieval quality is known.
 
-Implementation status: dense Chroma retrieval, SQLite FTS5 lexical retrieval, reciprocal-rank fusion, source-delimited prompts, and privacy-safe local query traces are implemented. Remaining release work includes streaming, cancellation, citation validation, richer retrieval metrics, and prompt-injection fixtures.
+Implementation status: complete. Dense Chroma retrieval, SQLite FTS5 lexical retrieval, reciprocal-rank fusion, source-delimited prompts, privacy-safe query traces, streaming with cancellation, citation validation, retrieval metrics, and prompt-injection fixtures are all implemented.
 
 Required answer behavior:
 
@@ -564,7 +576,7 @@ Ship both AppImage and DEB:
 
 Use `electron-updater` with public GitHub Releases for macOS and Windows.
 
-Implementation status: release CI now generates SHA-256 checksums, and the desktop shell has a guarded update-check hook that activates when `electron-updater` is installed in release builds. Remaining work is adding the dependency, signing update artifacts, channel UI, install prompts, and schema-safe update deferral during indexing.
+Implementation status: not started beyond checksums and a guarded update-check hook. Updates depend on signing, which is Phase 7 and blocked on developer certificates.
 
 Required behavior:
 
@@ -603,7 +615,7 @@ Add or correct:
 - SHA-256 checksums and build provenance.
 - Dependency update automation.
 
-Implementation status: threat model, privacy policy, release/signing docs, ADR, Code of Conduct, issue templates, PR template, CodeQL/dependency-audit workflow, and SBOM workflow are present. Remaining work includes model-license manifest details, checksum publishing in release automation, dependency update automation, and DCO/CLA decision.
+Implementation status: threat model, privacy policy, ADR, Code of Conduct, templates, CodeQL, dependency audit, and SBOM workflows are present, and THIRD_PARTY_NOTICES.md now records the bundled model and every shipped dependency. That review surfaced a licence conflict that blocks binary distribution. Dependency update automation and the DCO/CLA decision remain.
 
 Do not claim “production ready,” “private,” or “offline” until packaged binaries and clean-machine tests prove those properties.
 
