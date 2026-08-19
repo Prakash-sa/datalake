@@ -63,7 +63,7 @@ pre-commit install      # runs ruff, whitespace, and secret checks on commit
 | `ops/scripts/` | Operational shell scripts |
 | `docs/` | Architecture, reference, operations, and security docs |
 
-Backend layering is documented in [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md).
+Backend layering is documented in [docs/architecture/BACKEND.md](docs/architecture/BACKEND.md).
 
 ## Pull Request Checklist
 

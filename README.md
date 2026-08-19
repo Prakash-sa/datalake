@@ -180,7 +180,7 @@ filename alone can disclose the contents of a private library.
 The backend follows a clean layering — `api → application → domain`, with
 `infrastructure` supplying adapters. Dependencies point inward only.
 
-Full detail: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md).
+Full detail: [docs/architecture/BACKEND.md](docs/architecture/BACKEND.md).
 
 ---
 

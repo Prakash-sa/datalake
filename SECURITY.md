@@ -1,4 +1,6 @@
-# Security Policy
+# Security
+
+Policy, security model, and threat model for this project.
 
 ## Supported versions
 
@@ -10,47 +12,73 @@ Open a private security advisory where repository hosting supports it, or contac
 the maintainer directly. Please do not include secrets, production data, or
 proprietary documents in public issues.
 
-## Security model
+---
 
-The desktop application is designed so the renderer is the least trusted part:
+## Assets
 
-- The UI is served over a custom `app://` protocol, not `file://`, under a
-  restrictive Content Security Policy. Inline-script hashes are generated at
-  build time so the policy never needs `unsafe-inline`.
-- The renderer runs with context isolation on and Node integration off. It has no
-  filesystem, shell, or subprocess access.
-- The preload exposes a fixed set of typed functions. There is no general
-  `send` or `invoke` bridge, and the renderer never holds the backend token.
-- The backend sidecar binds to `127.0.0.1` on a random port and requires a bearer
-  token generated fresh on every launch.
-- Electron fuses disable `RunAsNode`, `NODE_OPTIONS`, and inspector arguments in
-  packaged builds, and require application code to load from the asar.
+- Documents the user imports, and the text extracted from them
+- Chunks, embeddings, and source metadata
+- SQLite catalog: paths, hashes, settings, job state, query traces, eval history
+- Chroma vector index
+- The per-launch backend bearer token
 
-These properties are asserted by the Playwright Electron suite, not just
-documented.
+## Trust boundaries
 
-## Untrusted input
+| Component | Trust | Capabilities |
+| --- | --- | --- |
+| Renderer | Untrusted | Typed preload functions only. No Node, filesystem, shell, or HTTP client. Never holds the token. |
+| Electron main | Trusted | Owns the sidecar, the token, native dialogs, protocol, CSP, navigation, permissions. |
+| Python sidecar | Trusted | Bound to `127.0.0.1` on a random port, bearer token required when launched by Electron. |
+| Ollama | Semi-trusted, optional | Contacted only at its configured URL. Receives excerpts and questions when generating. |
+| Document text | **Untrusted data** | Must never be treated as instructions. |
 
-Imported document text is treated as untrusted. Prompts fence retrieved excerpts
-between explicit delimiters and instruct the model that instructions inside them
-are data. The eval corpus includes prompt-injection fixtures.
+## Risks and controls
 
-Generated citations are validated against the chunks actually supplied to the
-model, so an answer cannot reference a source that was never retrieved.
+| Risk | Control |
+| --- | --- |
+| Prompt injection via imported documents | Excerpts fenced between explicit delimiters, model told they are data; injection fixtures in the eval corpus |
+| An answer citing a source it never saw | Citations validated against the chunks actually supplied; invalid ones reported, not rendered |
+| Backend exposed to the network | Binds to loopback, random port, per-launch bearer token |
+| Renderer-to-main IPC abuse | Fixed set of typed functions, sender validated, arguments filtered; no generic bridge |
+| Code injection into the renderer | `app://` protocol rather than `file://`, restrictive CSP with build-time inline-script hashes, no `unsafe-inline` |
+| Tampering with packaged code | Electron fuses disable `RunAsNode`, `NODE_OPTIONS`, and inspector arguments, and require loading from the asar |
+| Path traversal or hostile files | Extension, size, and regular-file validation; archive members rejected if absolute or parent-relative |
+| Document content leaking through logs | Paths, tokens, and long hex secrets stripped from messages and rendered tracebacks in production |
+| Traces disclosing queries | Queries stored as SHA-256 hashes with chunk ids, scores, and timings — never raw text |
+| Querying across incompatible embeddings | Index fingerprints refuse a mismatched index and require a rebuild |
+| Data sent off the machine unnoticed | Embeddings run in-process; Ollama is optional and loopback by default. A remote `OLLAMA_URL` sends excerpts to that host — see [PRIVACY](docs/security/PRIVACY.md) |
+
+The IPC boundary and renderer isolation are asserted by the Playwright Electron
+suite, not only documented.
+
+## Residual risks
+
+- A user who points `OLLAMA_URL` at a remote host sends document excerpts there.
+  This is deliberate configuration, surfaced in Settings and Diagnostics.
+- The bundled embedding model is trusted as distributed. Its archive is verified
+  against a published SHA-256, but the weights are not independently audited.
+- Refusal behaviour depends on whichever model the user installed; the prompt
+  defends against injection but cannot guarantee it.
+- Chroma and its dependencies run in-process with full access to the data
+  directory.
 
 ## Operational guidance
 
 - Treat the data directory — catalog, vectors, and backups — as sensitive.
 - Keep `ALLOWED_ORIGINS` restricted when running the backend as a service.
 - Do not expose Ollama, Chroma, or the backend beyond loopback.
-- Point `OLLAMA_URL` at a remote host only deliberately; doing so sends document
-  excerpts to that host.
+- Point `OLLAMA_URL` at a remote host only deliberately.
 - When running the Airflow stack, change the default MinIO and Airflow
   credentials before exposing it beyond localhost.
 - Rotate credentials if `.env` files, logs, or document payloads are shared.
 
-## Known issues
+## Release blockers
 
-`THIRD_PARTY_NOTICES.md` records an unresolved licence conflict that affects
-binary distribution. It is a compliance matter rather than a vulnerability, but
-it blocks releasing builds.
+- [ ] Signed and notarized macOS artifacts
+- [ ] Signed Windows installer and sidecar executable
+- [ ] Packaged smoke tests on clean macOS, Windows, and Linux machines
+- [ ] Resolve the licence conflict in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)
+
+Completed since this model was first written: prompt-injection eval fixtures,
+citation validation, log redaction, Electron fuses, CSP inline-script hashes,
+index fingerprinting, and SHA-256 checksums with SBOM generation in CI.

@@ -1,96 +1,60 @@
-# RAG Query Engine — Backend
+# rag-backend
 
-Local-first FastAPI sidecar providing semantic search and grounded question
-answering over locally ingested documents. Runs either as a container service or
-as a PyInstaller-packaged sidecar launched by the Electron shell.
+The Python sidecar: document ingestion, embedding, retrieval, and answer
+generation for the [Document RAG Engine](../README.md).
+
+This file stays here because `pyproject.toml` declares it as the package readme.
+Longer documentation lives under [`docs/`](../docs/INDEX.md):
+
+- [Backend architecture](../docs/architecture/BACKEND.md) — layering, ingestion
+  state machine, retrieval, fingerprints, streaming
+- [API reference](../docs/reference/API_REFERENCE.md) — endpoints, error codes,
+  streaming formats
+- [Troubleshooting](../docs/operations/TROUBLESHOOTING.md)
 
 ## Layout
 
 ```
-backend/
-├── pyproject.toml            # dependencies, lint, test, and build config
-├── rag-backend.spec          # PyInstaller bundle definition
-├── src/rag_backend/
-│   ├── app.py                # create_app() application factory
-│   ├── __main__.py           # `python -m rag_backend` entry point
-│   ├── settings.py           # environment-driven configuration
-│   ├── lifespan.py           # startup/shutdown, builds the RAG service
-│   ├── dependencies.py       # FastAPI dependency providers
-│   ├── logging_config.py
-│   ├── middleware/           # bearer-token auth for the desktop sidecar
-│   ├── api/routes/           # one module per endpoint group
-│   ├── schemas/              # request/response models
-│   ├── domain/               # entities and value objects
-│   ├── application/          # use cases: RAG, ingestion, retrieval, evals
-│   └── infrastructure/       # Chroma, Ollama, and SQLite catalog adapters
-└── tests/
-    ├── conftest.py           # app fixtures backed by a stub service
-    ├── unit/
-    └── integration/
+pyproject.toml       dependencies, lint, test, and build configuration
+rag-backend.spec     PyInstaller bundle for the desktop sidecar
+scripts/             build-time helpers, including the embedding model fetch
+src/rag_backend/
+  app.py             create_app() factory
+  __main__.py        python -m rag_backend
+  settings.py        environment-driven configuration
+  lifespan.py        startup and shutdown wiring
+  dependencies.py    FastAPI dependency providers
+  api/routes/        one module per endpoint group
+  application/       use cases: retrieval, citations, jobs, evals, data transfer
+  domain/            entities, job state machine, index fingerprints
+  infrastructure/    ONNX embeddings, Chroma, Ollama, SQLite catalog
+tests/{unit,integration}/
 ```
-
-Dependencies flow inward only: `api` → `application` → `domain`, with
-`infrastructure` supplying adapters that the application layer depends on.
 
 ## Development
 
 ```bash
-uv venv --python 3.12 && source .venv/bin/activate
-uv pip install -e '.[dev]'
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+python scripts/fetch_embedding_model.py   # bundled embedding model, ~91MB
 
 pytest                    # tests
 ruff check src tests      # lint
 ruff format src tests     # format
-mypy                      # type check
-
-python -m rag_backend     # run the API on $HOST:$PORT (default 127.0.0.1:8000)
+mypy                      # types
+python -m rag_backend     # run on $HOST:$PORT (default 127.0.0.1:8000)
 ```
 
-From the repository root, `make backend-test`, `make lint`, and `make backend-run`
-wrap the same commands.
+From the repository root, `make setup-backend`, `make check`, and
+`make backend-run` wrap the same commands.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and adjust. Every value is also settable as a plain
-environment variable. `ENV` selects a profile (`development`, `testing`,
-`production`) that supplies defaults; any variable you set explicitly wins over
-the profile.
+Copy `.env.example` to `.env`, or set the variables directly. `ENV` selects a
+profile (`development`, `testing`, `production`) supplying defaults; anything set
+explicitly wins.
 
-Set `RAG_API_TOKEN` to require `Authorization: Bearer <token>` on every request.
-The Electron shell generates one per launch; leave it unset for local container
-use.
+Set `RAG_API_TOKEN` to require `Authorization: Bearer <token>`. The desktop shell
+generates one per launch; leave it unset for local use.
 
-## Endpoints
-
-| Method | Path                 | Purpose                                  |
-| ------ | -------------------- | ---------------------------------------- |
-| GET    | `/health`            | Liveness; 503 until the service is ready |
-| GET    | `/stats`             | Counters and index sizes                 |
-| GET    | `/readiness`         | Capability and dependency report         |
-| GET    | `/diagnostics`       | Local support diagnostics                |
-| GET    | `/models`            | Installed and required Ollama models     |
-| POST   | `/models/pull`       | Pull an Ollama model (blocking)          |
-| POST   | `/models/pull/stream`| Pull a model, streaming progress as SSE  |
-| GET    | `/settings`          | Read runtime settings                    |
-| POST   | `/settings`          | Persist runtime settings                 |
-| POST   | `/documents/index`   | Index in-memory documents                |
-| POST   | `/documents/ingest`  | Ingest local files by path (synchronous) |
-| POST   | `/jobs`              | Queue background ingestion jobs          |
-| GET    | `/jobs`              | List jobs, filterable by status          |
-| GET    | `/jobs/{id}`         | Fetch one job                            |
-| POST   | `/jobs/{id}/cancel`  | Cancel a queued or running job           |
-| POST   | `/jobs/{id}/retry`   | Requeue a failed job                     |
-| POST   | `/jobs/rebuild`      | Re-queue every document for reindexing   |
-| POST   | `/data/backup`       | Snapshot the catalog database            |
-| GET    | `/data/backups`      | List snapshots, newest first             |
-| POST   | `/data/export`       | Write a portable archive                 |
-| POST   | `/data/import/inspect`| Read an archive manifest                |
-| POST   | `/data/import`       | Restore a catalog from an archive        |
-| GET    | `/documents`         | List catalog documents                   |
-| DELETE | `/documents/{id}`    | Delete a document and its chunks         |
-| POST   | `/documents/search`  | Hybrid dense + lexical search            |
-| POST   | `/query`             | Full RAG pipeline with citations         |
-| POST   | `/query/stream`      | Same pipeline, streamed as SSE           |
-| POST   | `/eval`              | Deterministic release-gating evals       |
-
-Interactive docs are served at `/docs` only when `DEBUG=true`.
+Every setting is documented in [`.env.example`](.env.example).

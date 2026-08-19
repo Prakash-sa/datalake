@@ -40,7 +40,31 @@ reliable. `.github/workflows/desktop-release.yml` runs the matrix.
 
 > **Before distributing builds**, resolve the licence conflict recorded in
 > [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md). Signing and notarization
-> are also not yet configured, so current artifacts are unsigned.
+> are also not yet configured, so current artifacts are unsigned. See
+> [Releasing](#releasing).
+
+### Releasing
+
+Neither signing nor notarization is configured yet, so there is no public binary
+release. What follows is the process to complete first.
+
+**Gates.** Backend tests, frontend typecheck and export, eval fixtures, and an
+Electron build on each native runner must pass, with SBOM and SHA-256 checksums
+generated and dependency and model licences reviewed.
+
+**macOS.** Build on macOS. Sign with a Developer ID Application certificate,
+enable Hardened Runtime, notarize through App Store Connect, and staple the
+ticket. Validate with `codesign`, `spctl`, and an install on a clean machine.
+
+**Windows.** Build on Windows. Sign the NSIS installer and the shipped
+executables, including the Python sidecar where practical. Timestamp every
+signature and keep the publisher identity stable across releases.
+
+**Linux.** Build AppImage and DEB on the oldest supported Ubuntu baseline and
+publish SHA-256 checksums. Electron's auto-updater does not cover Linux, so ship
+update instructions instead.
+
+**Versioning.** SemVer, tagged `rag-desktop-vMAJOR.MINOR.PATCH`.
 
 ### Data location
 
