@@ -9,6 +9,9 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // The capture spec drives a backend seeded with documents and is run by
+  // hand to refresh the README screenshots; CI has no such backend.
+  testIgnore: ['**/capture.spec.ts'],
   // Electron launches one app instance per worker; serial keeps the window and
   // the sidecar port predictable.
   workers: 1,

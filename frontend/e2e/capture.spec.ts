@@ -1,0 +1,82 @@
+/**
+ * Captures screenshots of the running desktop app for the README.
+ *
+ * Not part of the CI suite: it needs a backend seeded with documents on the
+ * default port. Run with `npx playwright test e2e/capture.spec.ts`.
+ */
+import { test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import * as path from 'node:path';
+
+const OUT = path.resolve(__dirname, '..', '..', 'docs', 'assets', 'screenshots');
+const ROOT = path.resolve(__dirname, '..');
+
+let app: ElectronApplication;
+let window: Page;
+
+test.beforeAll(async () => {
+  const { ELECTRON_RUN_AS_NODE: _ignored, ...cleanEnv } = process.env;
+  app = await electron.launch({
+    args: [ROOT],
+    env: {
+      ...cleanEnv,
+      NODE_ENV: 'production',
+      RAG_FORCE_PACKAGED: 'true',
+      // Talk to the pre-seeded backend on the default port instead of
+      // spawning an empty one.
+      RAG_START_BACKEND: 'false',
+      RAG_ENABLE_UPDATES: 'false',
+    },
+  });
+  window = await app.firstWindow();
+  await window.waitForLoadState('domcontentloaded');
+  await window.setViewportSize({ width: 1440, height: 900 });
+});
+
+test.afterAll(async () => {
+  await app?.close();
+});
+
+async function shot(name: string) {
+  await window.waitForTimeout(700);
+  await window.screenshot({ path: path.join(OUT, `${name}.png`) });
+}
+
+// A cold generation model can take minutes; the suite default is 60s.
+test.setTimeout(900_000);
+
+test('capture every view', async () => {
+  await window.waitForTimeout(2500);
+
+  // Setup only appears when something is missing. With a healthy backend it is
+  // skipped entirely, so this must not assume it is on screen.
+  const skip = window.getByText('Skip for now');
+  if (await skip.isVisible().catch(() => false)) {
+    await shot('01-first-run-setup');
+    await skip.click();
+    await window.waitForTimeout(800);
+  }
+
+  // Query with results.
+  await window.locator('#query').fill('How are dense and lexical results combined?');
+  await window.getByRole('button', { name: /^Search$/ }).click();
+  // Wait for streaming to finish rather than guessing: the Stop button is only
+  // present while generating.
+  await window
+    .getByRole('button', { name: /Stop/ })
+    .waitFor({ state: 'detached', timeout: 240_000 })
+    .catch(() => {});
+  await window.waitForTimeout(1200);
+  await shot('02-query-and-sources');
+
+  await window.getByRole('button', { name: /Library/ }).click();
+  await shot('03-library');
+
+  await window.getByRole('button', { name: /Activity/ }).click();
+  await shot('04-activity');
+
+  await window.getByRole('button', { name: /Diagnostics/ }).click();
+  await shot('05-diagnostics');
+
+  await window.getByRole('button', { name: /Settings/ }).click();
+  await shot('06-settings');
+});

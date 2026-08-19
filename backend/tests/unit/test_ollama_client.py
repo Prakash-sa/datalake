@@ -218,3 +218,17 @@ def test_an_unchanged_failure_is_logged_once(monkeypatch, client, caplog):
             client.check_health(use_cache=False)
 
     assert sum("Ollama unreachable" in r.message for r in caplog.records) == 1
+
+
+def test_a_404_means_the_model_is_not_installed():
+    # Ollama answers /api/generate with 404 for an unknown tag, and its message
+    # says only "Not Found", so the status must be inspected.
+    error = urllib.error.HTTPError("http://x/api/generate", 404, "Not Found", {}, None)
+
+    assert classify_ollama_exception(error) is ErrorCode.MODEL_UNAVAILABLE
+
+
+def test_other_http_errors_remain_generation_failures():
+    error = urllib.error.HTTPError("http://x/api/generate", 500, "Server Error", {}, None)
+
+    assert classify_ollama_exception(error) is ErrorCode.GENERATION_FAILED

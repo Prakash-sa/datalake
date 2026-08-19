@@ -39,6 +39,7 @@ from rag_backend.application.retrieval import (
     fuse_results,
 )
 from rag_backend.domain.fingerprint import build_fingerprint, compare
+from rag_backend.domain.model_selection import select_generation_model
 from rag_backend.errors import (
     CancelledError,
     ErrorCode,
@@ -95,10 +96,19 @@ class DocumentRAGService:
 
         self.catalog = CatalogStore(app_db_path)
         self.embedding_provider_name = embedding_provider
+        # Resolved against what is installed; see _resolve_generation_model.
+        self.configured_llm_model = llm_model
+        self.generation_selection_reason = "configured"
         # Only the generation model is required from Ollama when embeddings run
         # locally, so a missing embedding model must not be reported as missing.
         required = [llm_model] if embedding_provider == "local" else [embedding_model, llm_model]
         self.ollama = OllamaClient(ollama_url, required)
+        self.llm_model = self._resolve_generation_model(llm_model)
+        # Readiness should check the model actually in use, not the one that was
+        # configured but absent.
+        self.ollama.required_models = (
+            [self.llm_model] if embedding_provider == "local" else [embedding_model, self.llm_model]
+        )
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
 
         try:
@@ -110,7 +120,9 @@ class DocumentRAGService:
                 or str(Path(__file__).resolve().parents[1] / "models" / "all-MiniLM-L6-v2"),
                 ollama_client=self.ollama,
             )
-            self.llm = OllamaLLM(model=llm_model, base_url=ollama_url, temperature=temperature)
+            # Must use the resolved model, not the configured one, or the
+            # selection above would have no effect.
+            self.llm = OllamaLLM(model=self.llm_model, base_url=ollama_url, temperature=temperature)
             self.vector_store = ChromaVectorStore(chroma_path)
         except Exception as e:
             logger.error("Failed to initialize RAG components: %s", e, exc_info=True)
@@ -123,8 +135,42 @@ class DocumentRAGService:
             "RAG service ready (embeddings=%s/%s, generation=%s)",
             self.embedding_provider_name,
             getattr(self.embeddings, "model_name", embedding_model),
-            llm_model,
+            self.llm_model,
         )
+
+    def _resolve_generation_model(self, configured: str) -> str:
+        """Pick a generation model from what Ollama actually has installed.
+
+        A configured tag that is not installed would fail every query with a
+        404. Preferring an installed model instead means the app works on a
+        machine that pulled something else, and the substitution is reported
+        rather than hidden.
+        """
+        try:
+            installed = self.ollama.check_health().get("installed_models", [])
+        except Exception:  # pragma: no cover - health already degrades safely
+            installed = []
+
+        if not installed:
+            # Nothing to choose from; keep the configured name so readiness can
+            # report it as missing.
+            return configured
+
+        chosen, reason = select_generation_model(installed, configured)
+        self.generation_selection_reason = reason
+
+        if chosen is None:
+            logger.warning("No generation model installed in Ollama; answers will be unavailable")
+            return configured
+
+        if chosen != configured:
+            logger.info(
+                "Generation model %r is not installed; using %r (%s)",
+                configured,
+                chosen,
+                reason,
+            )
+        return chosen
 
     # -- Models ---------------------------------------------------------------
 
@@ -772,6 +818,15 @@ class DocumentRAGService:
                     "catalog_path": self.app_db_path,
                 },
                 "ollama": ollama,
+                "generation": {
+                    "status": "ready"
+                    if self.llm_model in ollama.get("installed_models", [])
+                    else "degraded",
+                    "model": self.llm_model,
+                    "configured_model": self.configured_llm_model,
+                    "selection": self.generation_selection_reason,
+                    "installed_models": ollama.get("installed_models", []),
+                },
                 "embeddings": self.embeddings.health(),
                 "index": self.check_index_compatibility(),
                 "eval": {

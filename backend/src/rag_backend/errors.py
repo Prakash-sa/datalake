@@ -165,6 +165,13 @@ _MODEL_UNAVAILABLE_HINTS = (
 
 def classify_ollama_exception(exc: Exception) -> ErrorCode:
     """Map an Ollama client exception to a structured code."""
+    # Ollama answers /api/generate with 404 when the model tag is not installed.
+    # Its message says only "Not Found", so the status has to be inspected or the
+    # user is told generation failed rather than to pull the model.
+    status = getattr(exc, "code", None)
+    if status == 404:
+        return ErrorCode.MODEL_UNAVAILABLE
+
     text = str(exc).lower()
     if isinstance(exc, TimeoutError) or "timeout" in text or "timed out" in text:
         return ErrorCode.GENERATION_TIMEOUT

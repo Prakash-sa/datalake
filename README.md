@@ -1,536 +1,279 @@
-# 🚀 Enterprise Document RAG Platform
+# Document RAG Engine
 
-## 🎯 Semantic Search & LLM Analysis at Scale
+A local-first desktop application for asking questions of your own documents.
+Import PDFs, Word files, Markdown, or HTML; they are parsed, chunked, embedded,
+and indexed **on your machine**, and answers cite the passages they came from.
 
-A production-grade **Retrieval Augmented Generation (RAG) system** for intelligent document discovery and analysis across large enterprise document collections. 
+Nothing is sent anywhere. There is no API key, no account, and no cloud service.
+Importing and searching need no external software at all — the embedding model
+runs inside the app.
 
-### Key Features
-- **🔍 Semantic Search** - Find documents by meaning, not just keywords
-- **🤖 LLM-Powered Answers** - Generate context-aware responses from documents
-- **⚡ Real-time Ingestion** - Automated document processing via Airflow DAGs
-- **🔒 No prerequisites** - Import and search need no external software; embeddings run in-process
-- **🔒 Enterprise-Ready** - No external APIs, all local inference
-- **📊 Vector Database** - Efficient similarity search at scale
-- **🎨 Modern UI** - Intuitive Next.js frontend for document exploration
+![Diagnostics](docs/assets/screenshots/05-diagnostics.png)
 
-### Technology Stack
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Orchestration** | Apache Airflow | Document ingestion pipeline scheduling |
-| **API** | FastAPI | High-performance REST API for search & analysis |
-| **Frontend** | Next.js 14 | Modern React UI with Tailwind CSS |
-| **Vector DB** | Chroma | Persistent storage for embeddings (384/768-dim) |
-| **LLM** | Ollama | Local inference with orca-mini & nomic-embed-text |
-| **Storage** | MinIO | S3-compatible object storage for documents |
-| **Database** | PostgreSQL | Metadata, state, and Airflow scheduling |
-| **Message Broker** | Redis | Celery task queue and caching |
-| **Execution** | Celery | Distributed task execution for DAGs |
-
-## 🏗️ System Architecture
-
-### Data Flow Diagram
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     USER INTERFACE                          │
-│  Next.js Frontend (http://localhost:3000)                   │
-└─────────────┬───────────────────────────────────────────────┘
-              │ HTTP/JSON
-              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                   QUERY PROCESSING                          │
-│  FastAPI Backend (http://localhost:8000)                    │
-│  - /documents/search          (semantic search)             │
-│  - /documents/ask             (LLM with context)            │
-│  - /documents/health          (health check)                │
-└──────────┬────────────────────────────┬────────────────────┘
-           │                            │
-           ↓                            ↓
-    ┌─────────────┐          ┌──────────────────┐
-    │   Chroma    │          │   Ollama LLM     │
-    │   Vector DB │          │   Inference      │
-    │ (Embeddings)│          │ (orca-mini)      │
-    └─────────────┘          └──────────────────┘
-           ↑
-           │ Embedding generation
-           │ (nomic-embed-text)
-           │
-┌──────────┴────────────────────────────────────────┐
-│         DOCUMENT INGESTION PIPELINE               │
-│     Apache Airflow DAG (Port 9093)                │
-│                                                    │
-│  1. Fetch Documents    (from MinIO)               │
-│  2. Process Documents  (chunk & split)            │
-│  3. Create Embeddings  (via Ollama)               │
-│  4. Upsert to Chroma   (vector storage)           │
-│  5. Validate Results   (verify indexing)          │
-│  6. Notify Completion  (log summary)              │
-└──────────┬────────────────────────────────────────┘
-           │
-           ↓
-    ┌─────────────────┐
-    │     MinIO       │
-    │ S3-Compatible   │
-    │    Storage      │
-    │ (Port 9000)     │
-    └─────────────────┘
-
-Infrastructure:
-- PostgreSQL (Port 5432)    - Airflow metadata & state
-- Redis (Port 6379)         - Celery broker & cache
-- Chroma (Port 8000)        - Vector database
-```
-
-### Component Details
-
-**Frontend (Next.js)**
-- User interface for document search and Q&A
-- Real-time response streaming
-- Environment: `NEXT_PUBLIC_API_URL=http://localhost:8000`
-
-**API Server (FastAPI)**
-- REST endpoints for semantic search and LLM queries
-- CORS enabled for localhost:3000
-- Graceful degradation when LLM unavailable
-- Returns search results with formatted context
-
-**Vector Database (Chroma)**
-- Persistent storage: `/opt/airflow/chroma_db`
-- Collection: "documents" (768-dimensional embeddings)
-- Search method: cosine similarity
-- Automatic compression and indexing
-
-**Orchestration (Airflow)**
-- Scheduler: Processes DAGs and schedules tasks
-- Worker: Executes tasks via Celery
-- Executor: Celery with Redis broker
-- DAG: `document_rag_ingestion_pipeline` (daily schedule)
-
-**Storage (MinIO)**
-- S3-compatible API at `http://minio:9000`
-- Console: `http://localhost:9001`
-- Bucket: "documents"
-- Used for staging uploaded documents
-
-## 📚 Documentation
-
-Complete documentation is organized in the `docs/` folder:
-
-Start at [docs/INDEX.md](docs/INDEX.md) for the full map.
-
-| Document | Purpose |
-|----------|---------|
-| [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) | Detailed system design, components, data flow |
-| [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) | Backend layering, composition, retrieval pipeline |
-| [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) | Setup for dev/staging/production, Kubernetes |
-| [docs/reference/API_REFERENCE.md](docs/reference/API_REFERENCE.md) | REST API endpoints, request/response examples |
-| [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md) | Common issues, solutions, debugging guide |
-| [docs/architecture/SYSTEM_DESIGN_INTERVIEW.md](docs/architecture/SYSTEM_DESIGN_INTERVIEW.md) | System design walkthrough in Q&A form |
-
-### Port Reference
-| Service | Port | URL |
-|---------|------|-----|
-| Frontend | 3000 | http://localhost:3000 |
-| API | 8000 | http://localhost:8000 |
-| Airflow Web | 9093 | http://localhost:9093 |
-| MinIO Console | 9001 | http://localhost:9001 |
-| Chroma | 8000 | http://localhost:8000 |
-| Ollama | 11434 | http://localhost:11434 |
-| PostgreSQL | 5432 | localhost:5432 |
-| Redis | 6379 | localhost:6379 |
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker & Docker Compose installed
-- 4GB RAM minimum (8GB recommended for full Ollama)
-- macOS/Linux/Windows with WSL2
-
-### 1. Start Services
-```bash
-cd datalake-project
-cp compose/.env.example compose/.env
-
-make up              # base stack with dev overrides
-# make up-airflow    # ...plus the Airflow orchestration stack
-# make up-prod       # production overlay, detached
-
-# Verify services are running
-docker ps | grep -E "rag-|airflow-|ollama"
-```
-
-`make help` lists every target. The equivalent raw command is:
-
-```bash
-docker compose -f compose/compose.yml -f compose/compose.dev.yml up --build
-```
-
-### 2. Verify Health
-```bash
-# Check API health
-curl http://localhost:8000/health
-
-# Check Ollama models
-curl http://localhost:11434/api/tags
-
-# Access UI at http://localhost:3000
-```
-
-### 3. Ingest Sample Documents
-```bash
-# Upload documents via MinIO console
-# http://localhost:9001 (minioadmin/minioadmin)
-# Create bucket: documents
-# Upload sample .txt files
-```
-
-### 4. Trigger Airflow Pipeline
-```bash
-# Access Airflow at http://localhost:9093
-# DAG: document_rag_ingestion_pipeline
-# Click: "Trigger DAG" button
-# Monitor: All 6 tasks should succeed
-```
-
-### 5. Search Documents
-```bash
-# Frontend UI
-# http://localhost:3000
-
-# Or use API directly
-curl -X POST http://localhost:8000/documents/search \
-  -H "Content-Type: application/json" \
-  -d '{"query":"your search query"}'
-```
-
-### Stop Services
-```bash
-make down
-
-# Remove volumes too (deletes indexed data)
-docker compose -f compose/compose.yml -f compose/compose.dev.yml down -v
-```
-
-### Backend development
-
-```bash
-make setup-backend   # venv + editable install with dev extras
-make check           # lint, format check, type check, tests
-make backend-run     # run the API directly
-```
-
-## 📂 Project Structure
-
-```
-datalake-project/
-├── Makefile                          # Developer entry points (`make help`)
-├── package.json                      # npm entrypoint for frontend/desktop commands
-├── .editorconfig
-├── .pre-commit-config.yaml
-│
-├── compose/                          # Container orchestration
-│   ├── compose.yml                   # Base stack: ollama, minio, chroma, backend, frontend
-│   ├── compose.dev.yml               # Dev overlay: source mounting and reload
-│   ├── compose.prod.yml              # Prod overlay: hardened images, limits, restart
-│   ├── compose.airflow.yml           # Add-on: postgres, redis, Airflow services
-│   └── .env.example                  # Compose variable template
-│
-├── backend/                          # FastAPI service
-│   ├── pyproject.toml                # Dependencies, lint, test, build config
-│   ├── rag-backend.spec              # PyInstaller sidecar bundle
-│   ├── ARCHITECTURE.md               # Layering and composition
-│   ├── .env.example
-│   ├── src/rag_backend/
-│   │   ├── app.py                    # create_app() factory
-│   │   ├── __main__.py               # `python -m rag_backend`
-│   │   ├── settings.py               # Environment-driven config
-│   │   ├── lifespan.py               # Startup/shutdown wiring
-│   │   ├── dependencies.py           # FastAPI DI providers
-│   │   ├── middleware/               # Bearer-token auth
-│   │   ├── api/routes/               # health, models, settings, documents, search, evals
-│   │   ├── schemas/                  # Request/response models
-│   │   ├── domain/                   # Entities, no I/O
-│   │   ├── application/              # Use cases and retrieval logic
-│   │   └── infrastructure/           # Chroma, Ollama, SQLite adapters
-│   └── tests/{unit,integration}/
-│
-├── frontend/                         # Next.js + Electron desktop UI
-│   ├── app/                          # App router pages and styles
-│   ├── electron/                     # Main and preload processes
-│   ├── scripts/                      # Sidecar packaging
-│   └── electron-builder.yml
-│
-├── evals/                            # Deterministic eval fixtures and guide
-│
-├── infra/airflow/                    # Airflow image and DAGs
-│   ├── dags/rag_vector_db_ingestion_dag.py
-│   └── Dockerfile
-│
-├── ops/scripts/                      # Operational shell scripts
-│
-├── docs/
-│   ├── INDEX.md                      # Documentation map
-│   ├── adr/                          # Architecture decision records
-│   ├── architecture/                 # System design and diagrams
-│   ├── reference/                    # API reference
-│   ├── operations/                   # Deployment, pipeline, release, troubleshooting
-│   ├── security/                     # Threat model and privacy
-│   └── assets/
-│
-└── volumes/                          # Generated runtime data (git-ignored)
-```
-
-## 🎯 Core Features
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| **📄 Document Ingestion** | Upload documents via MinIO, process with Airflow | ✅ Production |
-| **🔍 Semantic Search** | Find documents by meaning using vector embeddings | ✅ Production |
-| **🤖 LLM Integration** | Local Ollama inference for Q&A on documents | ✅ Production |
-| **⚡ REST API** | FastAPI with JSON request/response | ✅ Production |
-| **🎨 Web UI** | Next.js React interface for end-users | ✅ Production |
-| **📊 Vector Database** | Chroma with persistent storage | ✅ Production |
-| **🔄 Workflow Automation** | Apache Airflow DAGs for document pipeline | ✅ Production |
-| **💾 State Management** | PostgreSQL for Airflow metadata | ✅ Production |
-| **⚙️ Task Distribution** | Celery workers with Redis broker | ✅ Production |
-
-## 🔌 API Usage
-
-### Search Documents (Semantic)
-```bash
-curl -X POST http://localhost:8000/documents/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "How to implement caching?",
-    "top_k": 5
-  }'
-
-# Response: [
-#   {
-#     "id": "doc1_chunk_0",
-#     "content": "...",
-#     "similarity_score": 0.92,
-#     "metadata": {...}
-#   }, ...
-# ]
-```
-
-### Ask LLM Question (with context)
-```bash
-curl -X POST http://localhost:8000/documents/ask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "Explain caching strategies",
-    "top_k": 3
-  }'
-
-# Response: {
-#   "question": "Explain caching strategies",
-#   "answer": "Based on the documents...",
-#   "sources": [
-#     {"id": "doc1", "score": 0.91}
-#   ],
-#   "model": "orca-mini",
-#   "timestamp": "2025-12-22T..."
-# }
-```
-
-### Health Check
-```bash
-curl http://localhost:8000/health
-
-# Response: {
-#   "status": "healthy",
-#   "timestamp": "2025-12-22T04:59:40..."
-# }
-```
-
-## 🔄 Airflow Pipeline Details
-
-### DAG: document_rag_ingestion_pipeline
-
-**Schedule**: Daily at 00:00 UTC
-**Timeout**: 2 hours per run
-
-**6-Task Pipeline**:
-
-| # | Task | Input | Output | Purpose |
-|---|------|-------|--------|---------|
-| 1 | `fetch_documents_from_minio` | Bucket name | `List[Dict]` documents | Retrieve documents from S3 |
-| 2 | `process_documents` | `List[Dict]` | `List[Dict]` chunks | Split into chunks (1000 tokens) |
-| 3 | `create_embeddings` | `List[Dict]` | `List[Dict]` + vectors | Generate 768-dim embeddings |
-| 4 | `upsert_to_chroma` | Embeddings | Upsert stats | Index into vector DB |
-| 5 | `validate_vector_db` | Stats | Validation result | Verify indexing success |
-| 6 | `notify_completion` | Result dict | Summary log | Log pipeline completion |
-
-**Data Flow**: XCom-based (inter-task communication, no files)
-
-**Retry Policy**: 1 retry on failure
-
-**Expected Metrics**:
-- ~100 documents per run
-- ~5-10 chunks per document
-- Processing time: 5-10 minutes
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**"Model not found" error**
-```bash
-# Verify Ollama models
-curl http://localhost:11434/api/tags
-
-# Expected models:
-# - orca-mini (LLM, 2GB)
-# - nomic-embed-text (embeddings, 768-dim)
-```
-
-**API returns 502 Bad Gateway**
-```bash
-# Check backend logs
-docker logs rag-backend | tail -20
-
-# Restart backend
-docker restart rag-backend
-```
-
-**Airflow tasks failing**
-```bash
-# Check task logs
-docker exec airflow-scheduler airflow tasks list --dag-id document_rag_ingestion_pipeline
-
-# Check worker logs
-docker logs airflow-worker | tail -50
-```
-
-**Vector DB dimension mismatch**
-```bash
-# Clear Chroma collection if dimension changed
-docker exec rag-backend rm -rf /opt/airflow/chroma_db
-
-# Restart pipeline
-docker restart airflow-scheduler
-```
-
-See [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md) for more solutions.
-
-## 📈 Performance Tuning
-
-| Parameter | Default | Recommendation |
-|-----------|---------|-----------------|
-| Chunk size | 1000 tokens | Increase to 2000 for longer docs |
-| Chunk overlap | 200 tokens | Keep at 20% of chunk size |
-| Top K results | 5 | Increase to 10 for better context |
-| Embedding dim | 768 | Use 384 for faster search |
-| Airflow workers | 1 | Increase for parallel ingestion |
-
-## 🔐 Security Considerations
-
-- **MinIO**: Default credentials (change in production)
-- **PostgreSQL**: Default password (change in production)
-- **API**: CORS enabled for localhost only
-- **LLM**: Local inference (no external API keys)
-- **Data**: Stored in Docker volumes (ensure backups)
-
-## 🚀 Deployment
-
-### Development
-```bash
-make up
-```
-
-### Production
-```bash
-make up-prod
-```
-
-See [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) for Kubernetes and cloud deployment.
-
-## 📖 Learning Resources
-
-- **LLM & Embeddings**: [Ollama docs](https://ollama.ai)
-- **Vector Database**: [Chroma docs](https://docs.trychroma.com)
-- **Workflow Orchestration**: [Airflow docs](https://airflow.apache.org)
-- **REST API**: [FastAPI docs](http://localhost:8000/docs)
-- **Frontend**: [Next.js docs](https://nextjs.org)
-
-## 🤝 Contributing
-
-For issues, feature requests, or improvements:
-1. Check [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md)
-2. Review existing issues
-3. Submit detailed bug reports with logs
-4. Create pull requests with tests
-
-## 📄 License
-
-MIT License - See LICENSE file for details
-
-## 🔐 Security and Privacy
-
-- [Security policy](SECURITY.md)
-- [Threat model](docs/security/SECURITY_THREAT_MODEL.md)
-- [Privacy policy](docs/security/PRIVACY.md)
-- [Release and signing process](docs/operations/RELEASE.md)
-
-## 📞 Support
-
-- **Documentation**: See `docs/` folder
-- **Issues**: Check TROUBLESHOOTING.md
-- **Architecture**: See SYSTEM_DESIGN_INTERVIEW.md
-- **API**: Visit http://localhost:8000/docs when running
-| Ollama | ✅ Ready | Local LLM inference |
-| MinIO | ✅ Ready | Object storage |
-| PostgreSQL | ✅ Ready | Metadata store |
-
-## 🔍 Common Commands
-
-```bash
-# View logs
-make logs
-
-# Stop services
-./ops/scripts/stop.sh
-
-# Clean everything
-make down
-
-# Rebuild images
-docker compose -f compose/compose.yml build --no-cache
-
-# Access Airflow
-open http://localhost:9093
-
-# Access API docs
-open http://localhost:8000/docs
-
-# Test search endpoint
-curl -X POST http://localhost:8000/documents/search \
-  -H "Content-Type: application/json" \
-  -d '{"query":"example search"}'
-```
-
-## 📞 Support & Documentation
-
-- **Architecture**: See [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for system design
-- **Deployment**: See [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) for setup help
-- **API Usage**: See [docs/reference/API_REFERENCE.md](docs/reference/API_REFERENCE.md) for endpoints
-- **Issues**: See [docs/operations/TROUBLESHOOTING.md](docs/operations/TROUBLESHOOTING.md) for solutions
-
-## 🎓 Learning Resources
-
-- [Apache Airflow Documentation](https://airflow.apache.org/)
-- [FastAPI Guide](https://fastapi.tiangolo.com/)
-- [Next.js Handbook](https://nextjs.org/learn)
-- [Chroma Documentation](https://docs.trychroma.com/)
-- [Ollama Models](https://ollama.ai/library)
-
-## 📝 License
-
-This project is private and proprietary.
+> Diagnostics reports the embedding provider running in-process, its vector
+> width, and that no external software is required. Ollama is listed separately
+> and marked *generation only*.
 
 ---
 
-**Last Updated**: December 21, 2025  
-**Status**: ✅ Production-Ready  
-**Version**: 1.0.0
+## Contents
+
+- [What it does](#what-it-does)
+- [Screenshots](#screenshots)
+- [Engineering highlights](#engineering-highlights)
+- [Architecture](#architecture)
+- [Running it](#running-it)
+- [Testing and CI](#testing-and-ci)
+- [Repository layout](#repository-layout)
+- [Status](#status)
+
+---
+
+## What it does
+
+| | |
+| --- | --- |
+| **Import** | PDF, DOCX, Markdown, HTML, and text, via a native file picker or drag and drop |
+| **Index** | Parsed, chunked, embedded, and stored in a local Chroma collection plus a SQLite catalog |
+| **Search** | Dense vector search fused with SQLite FTS5 lexical search |
+| **Answer** | Streamed, grounded responses that cite the chunks they used |
+| **Operate** | A job queue with progress, retry, and cancel; diagnostics; export, import, and backup |
+
+Generated prose answers are the only feature that needs a local
+[Ollama](https://ollama.com) daemon. Without it, the app still imports, searches,
+and returns ranked cited passages.
+
+---
+
+## Screenshots
+
+### Query with sources
+
+Retrieved passages are shown with relevance scores and the metadata that
+produced them, so an answer can always be traced back to its evidence.
+
+![Query and sources](docs/assets/screenshots/02-query-and-sources.png)
+
+### Library
+
+Every indexed document with its type, size, chunk count, and the embedding model
+that produced its vectors — the field that decides whether a reindex is needed.
+
+![Library](docs/assets/screenshots/03-library.png)
+
+### Activity
+
+Ingestion runs as a background queue. Each job reports its stage, chunk
+progress, and attempt count, and can be cancelled or retried.
+
+![Activity](docs/assets/screenshots/04-activity.png)
+
+### Settings
+
+Model selection, retrieval parameters, and one-click pulls for anything missing.
+
+![Settings](docs/assets/screenshots/06-settings.png)
+
+---
+
+## Engineering highlights
+
+The parts of this project that were interesting to build.
+
+### Embeddings run in-process
+
+The obvious design delegates embeddings to Ollama, which makes it a hard
+prerequisite. Instead the sidecar runs **all-MiniLM-L6-v2 through ONNX Runtime**,
+so a machine with nothing installed can still import and search. Ollama becomes
+an optional upgrade rather than a gate.
+
+The model ships inside the bundle rather than downloading on first run, because
+"works offline" is not true if the first launch needs a network. Output was
+verified identical to Chroma's reference implementation (cosine 1.0) before the
+switch.
+
+### Hybrid retrieval
+
+Dense vector search alone misses exact identifiers and rare terms; lexical
+search alone misses paraphrase. Both run, and their rankings are merged with
+**reciprocal rank fusion**, which needs no score calibration between retrievers —
+cosine similarity and BM25 are not on a comparable scale.
+
+### Citations are validated, not trusted
+
+The model emits `[S1]`-style markers. After generation, every marker is checked
+against the chunks that were actually placed in the prompt. A citation pointing
+outside that set is reported as invalid rather than rendered, so the interface
+never shows a reference that resolves to nothing.
+
+Retrieved text is treated as untrusted: the prompt fences excerpts between
+explicit delimiters and states that instructions inside them are data. The eval
+corpus includes prompt-injection fixtures that attempt to override the system
+prompt and exfiltrate data.
+
+### The index knows what built it
+
+Every write stamps the index with its embedding provider, model, digest, vector
+width, chunker and parser versions. Changing any of them means existing vectors
+cannot be compared against new queries, so the app refuses the import and offers
+a rebuild instead of returning meaningless similarity scores.
+
+This matters because a Chroma collection fixes its vector width on first write,
+and that constraint outlives its rows — an emptied index still rejects vectors of
+a different size. That case is detected and recovered automatically.
+
+### Models are discovered, not assumed
+
+A hardcoded model tag fails with a 404 on any machine that pulled something
+else. The configured name is a *preference*: if it is installed it wins,
+otherwise an installed generation model is selected, embedding-only models are
+excluded, and the substitution is reported in diagnostics.
+
+### Desktop security
+
+The renderer is sandboxed with context isolation and no Node integration. The UI
+is served over a custom `app://` protocol rather than `file://`, under a
+restrictive CSP whose inline-script hashes are **generated at build time** so the
+policy never needs `unsafe-inline`. Electron fuses disable `RunAsNode`,
+`NODE_OPTIONS`, and inspector arguments in packaged builds.
+
+The preload exposes exactly five functions. The renderer never holds the backend
+token, never sees a channel name, and has no general-purpose HTTP or IPC bridge.
+
+### Failures are structured
+
+Errors carry machine-readable codes — `model_unavailable`,
+`index_model_mismatch`, `no_relevant_evidence`, `generation_timeout` — each
+mapped to an HTTP status and a flag for whether the user can act on it. The UI
+shows the backend's own message alongside guidance rather than replacing it.
+
+Production logs are redacted: filesystem paths, bearer tokens, and long hex
+secrets are stripped from messages *and* from rendered tracebacks, since a
+filename alone can disclose the contents of a private library.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────── Electron main ────────────────────────────┐
+│  serves the UI over app://   ·   owns the sidecar and its token       │
+│  typed IPC   ·   native dialogs   ·   CSP, navigation, permissions    │
+└───────────────┬───────────────────────────────────┬───────────────────┘
+                │ typed IPC (no HTTP in renderer)   │ spawn + health
+                ▼                                   ▼
+┌──────────────────────────┐        ┌──────────────────────────────────┐
+│  Renderer (Next.js)      │        │  Python sidecar (FastAPI)        │
+│  sandboxed, no Node      │        │                                  │
+│  Query · Library         │        │  ONNX embeddings (in-process)    │
+│  Activity · Settings     │        │  Chroma vectors + SQLite FTS5    │
+│  Diagnostics             │        │  ingestion job queue             │
+└──────────────────────────┘        │  retrieval · RRF · citations     │
+                                    └───────────────┬──────────────────┘
+                                                    │ optional, generation only
+                                                    ▼
+                                            ┌───────────────┐
+                                            │    Ollama     │
+                                            └───────────────┘
+```
+
+The backend follows a clean layering — `api → application → domain`, with
+`infrastructure` supplying adapters. Dependencies point inward only.
+
+Full detail: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md).
+
+---
+
+## Running it
+
+**Prerequisites:** [uv](https://docs.astral.sh/uv/) and Node.js 22.12+.
+Ollama is optional.
+
+```bash
+make setup        # backend venv, embedding model, frontend dependencies
+make desktop      # run the Electron app
+```
+
+`make help` lists every target.
+
+For generated answers, install Ollama and pull a small model. Larger models are
+slow on CPU-only machines:
+
+```bash
+ollama serve
+ollama pull qwen3:1.7b
+```
+
+The app selects whichever generation model you have installed.
+
+### Without the desktop shell
+
+```bash
+make backend-run    # FastAPI on 127.0.0.1:8000
+make frontend-run   # Next.js on :3000
+```
+
+### Container stack
+
+```bash
+cp compose/.env.example compose/.env
+make up             # base stack with dev overrides
+make up-airflow     # ...plus the Airflow ingestion pipeline
+```
+
+---
+
+## Testing and CI
+
+```
+254  backend tests      pytest, including the retrieval, citation,
+                        job-state-machine, and index-migration paths
+ 48  frontend tests     Vitest + React Testing Library
+  5  end-to-end tests   Playwright driving the real Electron shell
+```
+
+`make check` runs lint, format, type checks, and tests. CI additionally
+validates every merged Compose configuration and runs the Electron suite
+headless. Separate workflows cover CodeQL, dependency audit, and SBOM
+generation.
+
+The Electron suite asserts the security boundary directly: that the UI loads
+over `app://` rather than `file://`, that the preload surface is exactly the
+intended functions, and that `require`, `process`, `ipcRenderer`, and `electron`
+are all absent from the renderer.
+
+---
+
+## Repository layout
+
+```
+backend/          FastAPI sidecar
+  src/rag_backend/
+    api/routes/     one module per endpoint group (26 endpoints)
+    application/    use cases: retrieval, citations, jobs, evals, data transfer
+    domain/         entities, job state machine, index fingerprints
+    infrastructure/ ONNX embeddings, Chroma, Ollama, SQLite catalog
+  tests/{unit,integration}/
+frontend/         Next.js UI + Electron shell
+  app/components/   Query, Library, Activity, Settings, Diagnostics
+  electron/         main and preload processes
+  e2e/              Playwright Electron tests
+evals/            fixture corpus and eval cases
+compose/          base stack plus dev, prod, and Airflow overlays
+infra/airflow/    ingestion DAGs
+docs/             architecture, operations, security, ADRs
+```
+
+---
+
+## Status
+
+Working and tested: import, indexing, hybrid retrieval, streamed cited answers,
+the job queue, diagnostics, export and import, and the packaged Electron shell.
+
+Not yet done: code signing and notarization, and the clean-machine install and
+upgrade testing that depends on it. Distribution therefore means building from
+source for now.
+
+Documentation index: [docs/INDEX.md](docs/INDEX.md) ·
+Licence: [MIT](LICENSE) · Security policy: [SECURITY.md](SECURITY.md)
