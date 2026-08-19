@@ -1,20 +1,14 @@
-# Base stack: the RAG engine and the local services it depends on.
+# Supporting services for the Airflow ingestion pipeline.
 #
-# Always combined with exactly one environment overlay, plus optional add-ons:
-#   docker compose -f compose/compose.yml -f compose/compose.dev.yml  up
-#   docker compose -f compose/compose.yml -f compose/compose.prod.yml up -d
-#   ... -f compose/compose.airflow.yml    # adds the orchestration stack
+# The desktop application does not use any of this: it runs the backend as a
+# packaged sidecar and embeds in-process. These services exist for the
+# server-side pipeline that loads documents in bulk from object storage.
 #
-# `make up`, `make up-prod`, and `make up-airflow` wrap these invocations.
-# Paths are relative to this file's directory.
+#   docker compose -f compose/compose.yml -f compose/compose.airflow.yml up
+#
+# `make up-airflow` wraps that. Paths are relative to this file.
 
-name: rag-query-engine
-
-x-rag-env: &rag-env
-  OLLAMA_URL: http://ollama:11434
-  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
-  LLM_MODEL: ${LLM_MODEL:-orca-mini}
-  LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+name: rag-pipeline
 
 services:
   ollama:
@@ -54,8 +48,6 @@ services:
       timeout: 20s
       retries: 3
 
-  # Standalone Chroma server, used by the Airflow ingestion DAG. The backend
-  # itself embeds Chroma and writes to its own persistent path.
   chroma:
     image: ghcr.io/chroma-core/chroma:latest
     container_name: chroma
@@ -71,56 +63,6 @@ services:
       - rag-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  rag-backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    container_name: rag-backend
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
-    environment:
-      <<: *rag-env
-      ENV: development
-      HOST: 0.0.0.0
-      APP_DATA_DIR: /data
-      CHROMA_PATH: /data/chroma_db
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-    volumes:
-      - ../volumes/backend_data:/data
-    depends_on:
-      ollama:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    networks:
-      - rag-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  rag-frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-    container_name: rag-frontend
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    environment:
-      # Resolved by the browser, so this is a host address, not a service name.
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-    depends_on:
-      - rag-backend
-    networks:
-      - rag-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3

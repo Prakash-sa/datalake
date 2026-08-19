@@ -213,12 +213,14 @@ make backend-run    # FastAPI on 127.0.0.1:8000
 make frontend-run   # Next.js on :3000
 ```
 
-### Container stack
+### Optional ingestion pipeline
+
+Docker is used only for the Airflow pipeline that loads documents in bulk from
+object storage. The desktop application needs none of it.
 
 ```bash
 cp compose/.env.example compose/.env
-make up             # base stack with dev overrides
-make up-airflow     # ...plus the Airflow ingestion pipeline
+make up-airflow
 ```
 
 ---
@@ -259,7 +261,7 @@ frontend/         Next.js UI + Electron shell
   electron/         main and preload processes
   e2e/              Playwright Electron tests
 evals/            fixture corpus and eval cases
-compose/          base stack plus dev, prod, and Airflow overlays
+compose/          services for the optional Airflow pipeline
 infra/airflow/    ingestion DAGs
 docs/             architecture, operations, security, ADRs
 ```

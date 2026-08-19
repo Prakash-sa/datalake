@@ -12,10 +12,10 @@ need a matching `python3` on your PATH.
    ```bash
    make setup            # backend venv (editable, with dev extras) + frontend deps
    ```
-2. Start the supporting services (Ollama, MinIO, Chroma):
+2. Optionally install [Ollama](https://ollama.com) for generated answers.
+   Import and search work without it:
    ```bash
-   cp compose/.env.example compose/.env
-   make up
+   ollama serve && ollama pull qwen3:1.7b
    ```
 3. Run the pieces you are working on:
    ```bash

@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # ============================================================================
-# DataLake RAG System - Startup Script
+# Airflow ingestion pipeline - startup script
 # ============================================================================
-# Comprehensive startup script with health checks, initialization, and monitoring
+# Starts the pipeline and the services it depends on. The desktop application
+# does not use any of this; run it with `make desktop`.
 # Usage: ./ops/scripts/start.sh [OPTIONS]
 # Options:
 #   --clean           Clean volumes before startup
@@ -28,11 +29,10 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_FILE="${PROJECT_DIR}/.logs/startup.log"
 COMPOSE_DIR="${PROJECT_DIR}/compose"
 
-# Full local stack: base services plus dev overrides and Airflow orchestration.
+# The Airflow ingestion pipeline and the services it depends on.
 compose() {
     docker compose \
         -f "${COMPOSE_DIR}/compose.yml" \
-        -f "${COMPOSE_DIR}/compose.dev.yml" \
         -f "${COMPOSE_DIR}/compose.airflow.yml" \
         "$@"
 }
@@ -184,39 +184,6 @@ wait_for_services() {
         warning "Airflow Webserver not responding after ${max_attempts}0 seconds"
     fi
     
-    # Wait for RAG Backend
-    attempt=1
-    log "Waiting for RAG Backend (port 8000)..."
-    while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-            success "RAG Backend is ready"
-            break
-        fi
-        echo -n "."
-        sleep 2
-        ((attempt++))
-    done
-    
-    if [ $attempt -gt $max_attempts ]; then
-        warning "RAG Backend not responding after ${max_attempts}0 seconds"
-    fi
-    
-    # Wait for Frontend
-    attempt=1
-    log "Waiting for Frontend (port 3000)..."
-    while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:3000 > /dev/null 2>&1; then
-            success "Frontend is ready"
-            break
-        fi
-        echo -n "."
-        sleep 2
-        ((attempt++))
-    done
-    
-    if [ $attempt -gt $max_attempts ]; then
-        warning "Frontend not responding after ${max_attempts}0 seconds"
-    fi
 }
 
 health_check() {
@@ -226,8 +193,8 @@ health_check() {
     
     header "Health Check"
     
-    local services=("Airflow" "RAG Backend" "Frontend" "MinIO" "Ollama" "Chroma" "PostgreSQL" "Redis")
-    local endpoints=("localhost:9093" "localhost:8000" "localhost:3000" "localhost:9001" "localhost:11434" "localhost:8001" "localhost:5432" "localhost:6379")
+    local services=("Airflow" "MinIO" "Ollama" "Chroma" "PostgreSQL" "Redis")
+    local endpoints=("localhost:9093" "localhost:9001" "localhost:11434" "localhost:8001" "localhost:5432" "localhost:6379")
     local healthy=0
     
     for i in "${!services[@]}"; do
@@ -250,8 +217,6 @@ print_summary() {
     
     echo -e "${GREEN}Services are running:${NC}\n"
     echo "  Airflow UI:      ${BLUE}http://localhost:9093${NC} (airflow/airflow)"
-    echo "  RAG API:         ${BLUE}http://localhost:8000${NC} (Swagger: /docs)"
-    echo "  Frontend:        ${BLUE}http://localhost:3000${NC}"
     echo "  MinIO Console:   ${BLUE}http://localhost:9001${NC} (minioadmin/minioadmin)"
     echo "  Ollama:          ${BLUE}http://localhost:11434${NC}"
     echo "  Chroma:          ${BLUE}http://localhost:8001${NC}"
@@ -261,7 +226,7 @@ print_summary() {
     echo "  1. Access Airflow:  http://localhost:9093"
     echo "  2. Trigger DAG:     document_rag_ingestion_pipeline"
     echo "  3. Upload docs:     Upload files to MinIO console"
-    echo "  4. Query docs:      http://localhost:3000"
+    echo "  4. Query docs:      run the desktop app with 'make desktop'"
     echo ""
     
     echo -e "${GREEN}Useful Commands:${NC}"

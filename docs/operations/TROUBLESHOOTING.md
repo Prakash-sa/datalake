@@ -147,13 +147,16 @@ curl http://127.0.0.1:8000/jobs          # ingestion queue state
 `readiness` reports embeddings and generation separately, which is the quickest
 way to tell whether a problem affects search or only written answers.
 
-## Container stack
+## Ingestion pipeline
+
+Docker is used only for the optional Airflow pipeline; the desktop application
+needs none of it.
 
 ```bash
-make config      # render the merged compose configuration
-make logs        # tail the running stack
-make down        # stop everything
+make config      # render the merged configuration
+make logs        # tail the running pipeline
+make down        # stop it
 ```
 
-A service that will not start is usually a port conflict or an unset variable
-that the production overlay requires.
+A service that will not start is usually a port conflict. See
+[PIPELINE_GUIDE](PIPELINE_GUIDE.md).

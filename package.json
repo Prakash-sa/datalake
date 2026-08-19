@@ -15,8 +15,6 @@
     "lint": "npm --prefix frontend run lint",
     "electron": "npm --prefix frontend run electron",
     "electron:dev": "npm --prefix frontend run electron:dev",
-    "dist": "npm --prefix frontend run dist",
-    "up": "docker compose -f compose/compose.yml -f compose/compose.dev.yml up --build",
-    "down": "docker compose -f compose/compose.yml -f compose/compose.dev.yml down --remove-orphans"
+    "dist": "npm --prefix frontend run dist"
   }
 }

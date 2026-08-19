@@ -24,11 +24,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_DIR="${PROJECT_DIR}/compose"
 
-# Full local stack: base services plus dev overrides and Airflow orchestration.
+# The Airflow ingestion pipeline and the services it depends on.
 compose() {
     docker compose \
         -f "${COMPOSE_DIR}/compose.yml" \
-        -f "${COMPOSE_DIR}/compose.dev.yml" \
         -f "${COMPOSE_DIR}/compose.airflow.yml" \
         "$@"
 }
@@ -93,7 +92,7 @@ check_logs() {
         compose logs airflow-scheduler --tail=5 2>/dev/null || echo "No logs"
         
         echo -e "\n${YELLOW}RAG Backend:${NC}"
-        compose logs rag-backend --tail=5 2>/dev/null || echo "No logs"
+        compose logs airflow-worker --tail=5 2>/dev/null || echo "No logs"
     fi
 }
 

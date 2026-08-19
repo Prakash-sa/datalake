@@ -5,10 +5,10 @@ There are two ways to run this project. They are independent.
 | | For | Entry point |
 | --- | --- | --- |
 | **Desktop application** | Individuals searching their own documents | `make desktop`, or a packaged installer |
-| **Container stack** | A shared backend, or the Airflow ingestion pipeline | `make up` |
+| **Ingestion pipeline** | Bulk server-side loading from object storage | `make up-airflow` |
 
-Most users want the desktop application. The container stack exists for
-server-side bulk ingestion and for running the API as a service.
+Most users want the desktop application. The pipeline is optional and
+independent of it.
 
 ---
 
@@ -80,59 +80,36 @@ Uninstalling does not remove it.
 
 ---
 
-## Container stack
+## Ingestion pipeline
+
+Docker is used for one thing: the optional Airflow pipeline that loads documents
+in bulk from object storage. The desktop application uses none of it.
 
 ```bash
 cp compose/.env.example compose/.env
-make up                 # base stack with development overrides
-make up-prod            # production overlay, detached
-make up-airflow         # base stack plus the Airflow pipeline
+make up-airflow      # Ollama, MinIO, Chroma, Postgres, Redis, Airflow
 make down
+make logs
 ```
-
-Compose is organised as a base file plus overlays, so service definitions are not
-duplicated:
-
-| File | Contents |
-| --- | --- |
-| `compose/compose.yml` | Ollama, MinIO, Chroma, backend, frontend |
-| `compose/compose.dev.yml` | Source mounting for reload |
-| `compose/compose.prod.yml` | Hardened image, restart policy, resource limits |
-| `compose/compose.airflow.yml` | Postgres, Redis, Airflow services |
 
 `make config` renders the merged configuration without starting anything, which
-is also what CI validates.
+is what CI validates.
 
-### Production overlay
+Details: [PIPELINE_GUIDE](PIPELINE_GUIDE.md).
 
-The production overlay requires several variables to be set explicitly and will
-refuse to start without them:
+### Running the backend as a service
 
+There is no container image for the backend. To run it as a service rather than
+as a desktop sidecar, install the package and run it directly:
+
+```bash
+pip install ./backend
+python -m rag_backend      # honours HOST, PORT, and the rest of .env.example
 ```
-ALLOWED_ORIGINS       exact origins, never "*"
-NEXT_PUBLIC_API_URL   address the browser will use
-MINIO_ROOT_USER       not the default
-MINIO_ROOT_PASSWORD   not the default
-```
 
-It builds `Dockerfile.prod`: a multi-stage image running Gunicorn with Uvicorn
-workers as a non-root user.
+Bind it to loopback and set `RAG_API_TOKEN` unless it is behind something that
+authenticates for it.
 
-### Backend configuration
-
-Every value is an environment variable; see
-[`backend/.env.example`](../../backend/.env.example). The ones that matter most:
-
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `ENV` | `production` | Profile supplying defaults; explicit variables win |
-| `HOST` | `127.0.0.1` | Keep on loopback unless deliberately serving |
-| `EMBEDDING_PROVIDER` | `local` | `local` needs no external software |
-| `OLLAMA_URL` | `http://127.0.0.1:11434` | Remote values send excerpts off the machine |
-| `RAG_API_TOKEN` | unset | When set, every request must present it |
-| `LOG_REDACT` | `true` | Strips paths and secrets from logs |
-
----
 
 ## Backups
 

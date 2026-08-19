@@ -93,12 +93,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Catches merge errors and bad interpolation without building images.
-      - name: Validate merged compose configurations
+      - name: Validate the pipeline compose configuration
         run: |
           cp compose/.env.example compose/.env
-          docker compose -f compose/compose.yml -f compose/compose.dev.yml config -q
           docker compose -f compose/compose.yml -f compose/compose.airflow.yml config -q
-          ALLOWED_ORIGINS=http://localhost:3000 \
-          NEXT_PUBLIC_API_URL=http://localhost:8000 \
-          MINIO_ROOT_USER=ci MINIO_ROOT_PASSWORD=ci-secret \
-            docker compose -f compose/compose.yml -f compose/compose.prod.yml config -q

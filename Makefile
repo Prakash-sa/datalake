@@ -87,32 +87,26 @@ dist: ## Build the packaged desktop application
 	# wrong version and will not have the backend dependencies installed.
 	PYTHON="$(VENV_PY)" npm --prefix $(FRONTEND) run dist
 
-# --- Compose stacks ----------------------------------------------------------
-
-.PHONY: up
-up: ## Start the dev stack
-	$(COMPOSE) -f compose/compose.dev.yml up --build
-
-.PHONY: up-prod
-up-prod: ## Start the production stack detached
-	$(COMPOSE) -f compose/compose.prod.yml up -d --build
+# --- Ingestion pipeline ------------------------------------------------------
+# Docker is only used for the optional Airflow pipeline; the desktop app runs a
+# packaged sidecar and needs none of it.
 
 .PHONY: up-airflow
-up-airflow: ## Start the dev stack plus Airflow orchestration
-	$(COMPOSE) -f compose/compose.dev.yml -f compose/compose.airflow.yml up --build
+up-airflow: ## Start the Airflow ingestion pipeline and its services
+	$(COMPOSE) -f compose/compose.airflow.yml up --build
 
 .PHONY: down
-down: ## Stop all stacks
-	$(COMPOSE) -f compose/compose.dev.yml -f compose/compose.prod.yml \
-		-f compose/compose.airflow.yml down --remove-orphans
+down: ## Stop the pipeline
+	$(COMPOSE) -f compose/compose.airflow.yml down --remove-orphans
 
 .PHONY: logs
-logs: ## Tail logs from the running stack
-	$(COMPOSE) logs -f --tail=100
+logs: ## Tail logs from the running pipeline
+	$(COMPOSE) -f compose/compose.airflow.yml logs -f --tail=100
 
 .PHONY: config
-config: ## Render and validate the merged dev compose configuration
-	$(COMPOSE) -f compose/compose.dev.yml config
+config: ## Render and validate the merged pipeline configuration
+	$(COMPOSE) -f compose/compose.airflow.yml config
+
 
 # --- Housekeeping ------------------------------------------------------------
 

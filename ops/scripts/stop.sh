@@ -23,11 +23,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_DIR="${PROJECT_DIR}/compose"
 
-# Full local stack: base services plus dev overrides and Airflow orchestration.
+# The Airflow ingestion pipeline and the services it depends on.
 compose() {
     docker compose \
         -f "${COMPOSE_DIR}/compose.yml" \
-        -f "${COMPOSE_DIR}/compose.dev.yml" \
         -f "${COMPOSE_DIR}/compose.airflow.yml" \
         "$@"
 }
