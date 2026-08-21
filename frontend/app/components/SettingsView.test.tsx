@@ -5,7 +5,9 @@ import SettingsView from '@/app/components/SettingsView';
 const SETTINGS = {
   ollama_url: 'http://127.0.0.1:11434',
   generation_provider: 'local' as const,
-  local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+  local_llm_model_path: '/models/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+  local_llm_gpu_layers: 12,
+  local_llm_max_tokens: 256,
   embedding_model: 'qwen3-embedding:0.6b',
   llm_model: 'qwen3:4b',
   temperature: 0.1,
@@ -57,6 +59,8 @@ describe('SettingsView', () => {
     const url = (await screen.findByDisplayValue('http://127.0.0.1:11434')) as HTMLInputElement;
     expect(url.value).toBe('http://127.0.0.1:11434');
     expect(screen.getByDisplayValue('qwen3:4b')).toBeTruthy();
+    expect(screen.getByDisplayValue('12')).toBeTruthy();
+    expect(screen.getByDisplayValue('256')).toBeTruthy();
   });
 
   it('warns that changing the embedding model forces a reindex', async () => {
@@ -101,6 +105,7 @@ describe('SettingsView', () => {
     await waitFor(() => expect(screen.getByText(/Restart the app/i)).toBeTruthy());
     const post = calls.find((c) => c.url.includes('/settings') && c.body);
     expect((post?.body as { ollama_url: string }).ollama_url).toBe('http://localhost:9999');
+    expect((post?.body as { local_llm_gpu_layers: number }).local_llm_gpu_layers).toBe(12);
   });
 
   it('applying a profile fills the model fields without saving directly', async () => {

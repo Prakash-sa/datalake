@@ -46,6 +46,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             local_embedding_model_dir=settings.resolved_local_embedding_model_dir,
             generation_provider=settings.generation_provider,
             local_llm_model_path=settings.resolved_local_llm_model_path,
+            local_llm_gpu_layers=settings.local_llm_gpu_layers,
+            local_llm_max_tokens=settings.local_llm_max_tokens,
         )
         app.state.rag_service = rag_service
         app.state.eval_service = EvalService(rag_service)

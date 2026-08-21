@@ -77,6 +77,8 @@ class Settings(BaseSettings):
         default="local", alias="GENERATION_PROVIDER"
     )
     local_llm_model_path: str | None = Field(default=None, alias="LOCAL_LLM_MODEL_PATH")
+    local_llm_gpu_layers: int = Field(default=12, ge=0, le=999, alias="LOCAL_LLM_GPU_LAYERS")
+    local_llm_max_tokens: int = Field(default=256, ge=32, le=4096, alias="LOCAL_LLM_MAX_TOKENS")
 
     # Embeddings. "local" runs in-process via ONNX and needs no external
     # software; "ollama" delegates to the daemon. Switching invalidates the

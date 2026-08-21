@@ -48,7 +48,7 @@ try:
     llm = Llama(
         model_path=request["model_path"],
         n_ctx=int(request["context_window"]),
-        n_gpu_layers=0,
+        n_gpu_layers=int(request["gpu_layers"]),
         verbose=False,
     )
     result = llm(
@@ -139,12 +139,14 @@ class LlamaCppGenerationProvider:
         *,
         model_alias: str = "local-gguf",
         context_window: int = 4096,
-        max_tokens: int = 512,
+        max_tokens: int = 256,
+        gpu_layers: int = 12,
     ) -> None:
         self.model_path = str(Path(model_path).expanduser())
         self.model_name = model_alias
         self.context_window = context_window
         self.max_tokens = max_tokens
+        self.gpu_layers = gpu_layers
         self._load_error: str | None = None
         self._health_cache: dict[str, object] | None = None
         self._server_process: subprocess.Popen[str] | None = None
@@ -277,7 +279,7 @@ class LlamaCppGenerationProvider:
                     "--ctx-size",
                     str(self.context_window),
                     "--gpu-layers",
-                    "0",
+                    str(self.gpu_layers),
                     "--parallel",
                     "1",
                     "--no-webui",
@@ -414,7 +416,7 @@ class LlamaCppGenerationProvider:
                     "--ctx-size",
                     str(context_window),
                     "--gpu-layers",
-                    "0",
+                    str(self.gpu_layers),
                     "--temp",
                     str(temperature),
                     "--single-turn",
@@ -469,7 +471,7 @@ class LlamaCppGenerationProvider:
                     "-n",
                     str(max_tokens),
                     "-ngl",
-                    "0",
+                    str(self.gpu_layers),
                     prompt,
                 ],
                 text=True,
@@ -513,6 +515,7 @@ class LlamaCppGenerationProvider:
             "max_tokens": max_tokens or self.max_tokens,
             "prompt": prompt,
             "temperature": temperature,
+            "gpu_layers": self.gpu_layers,
         }
         try:
             completed = subprocess.run(
@@ -654,6 +657,8 @@ class LlamaCppGenerationProvider:
                 "model": self.model_name,
                 "model_path": self.model_path,
                 "runtime": self._runtime_name(),
+                "gpu_layers": self.gpu_layers,
+                "max_tokens": self.max_tokens,
                 "error": str(exc),
             }
         except GenerationError as exc:
@@ -663,6 +668,8 @@ class LlamaCppGenerationProvider:
                 "model": self.model_name,
                 "model_path": self.model_path,
                 "runtime": self._runtime_name(),
+                "gpu_layers": self.gpu_layers,
+                "max_tokens": self.max_tokens,
                 "error": str(exc),
             }
         return {
@@ -671,6 +678,8 @@ class LlamaCppGenerationProvider:
             "model": self.model_name,
             "model_path": self.model_path,
             "runtime": self._runtime_name(),
+            "gpu_layers": self.gpu_layers,
+            "max_tokens": self.max_tokens,
         }
 
     def health(self) -> dict[str, object]:
@@ -682,6 +691,8 @@ class LlamaCppGenerationProvider:
                 "model": self.model_name,
                 "model_path": self.model_path,
                 "runtime": self._runtime_name(),
+                "gpu_layers": self.gpu_layers,
+                "max_tokens": self.max_tokens,
                 "error": "local model file missing",
             }
         if self._load_error is not None:
@@ -691,6 +702,8 @@ class LlamaCppGenerationProvider:
                 "model": self.model_name,
                 "model_path": self.model_path,
                 "runtime": self._runtime_name(),
+                "gpu_layers": self.gpu_layers,
+                "max_tokens": self.max_tokens,
                 "error": self._load_error,
             }
         if self._health_cache is None:
@@ -717,10 +730,17 @@ def build_generation_provider(
     ollama_client: OllamaClient,
     model: str,
     local_model_path: str,
+    local_gpu_layers: int = 12,
+    local_max_tokens: int = 256,
 ) -> GenerationProvider:
     """Build the configured generation provider."""
     if provider == "ollama":
         return OllamaGenerationProvider(ollama_client, model)
     if provider == "local":
-        return LlamaCppGenerationProvider(local_model_path, model_alias=model)
+        return LlamaCppGenerationProvider(
+            local_model_path,
+            model_alias=model,
+            gpu_layers=local_gpu_layers,
+            max_tokens=local_max_tokens,
+        )
     raise ValueError(f"Unsupported generation provider: {provider}")

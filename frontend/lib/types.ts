@@ -4,6 +4,8 @@ export type RuntimeSettings = {
   ollama_url: string;
   generation_provider: 'local' | 'ollama';
   local_llm_model_path: string;
+  local_llm_gpu_layers: number;
+  local_llm_max_tokens: number;
   embedding_model: string;
   llm_model: string;
   temperature: number;
@@ -32,6 +34,8 @@ export type Diagnostics = {
     ollama_url: string;
     generation_provider: 'local' | 'ollama';
     local_llm_model_path: string;
+    local_llm_gpu_layers: number;
+    local_llm_max_tokens: number;
     embedding_model: string;
     llm_model: string;
   };
@@ -65,6 +69,8 @@ export type GenerationCapability = {
   provider: 'local' | 'ollama';
   model: string;
   model_path?: string;
+  gpu_layers?: number;
+  max_tokens?: number;
   requires_ollama?: boolean;
   error?: string;
 };

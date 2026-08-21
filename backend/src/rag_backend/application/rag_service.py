@@ -83,6 +83,8 @@ class DocumentRAGService:
         local_embedding_model_dir: str | None = None,
         generation_provider: str = "local",
         local_llm_model_path: str | None = None,
+        local_llm_gpu_layers: int = 12,
+        local_llm_max_tokens: int = 256,
     ) -> None:
         if not 0.0 <= temperature <= 1.0:
             raise ValueError("Temperature must be between 0.0 and 1.0")
@@ -96,8 +98,12 @@ class DocumentRAGService:
         self.context_token_budget = context_token_budget
         self.generation_provider_name = generation_provider
         self.local_llm_model_path = local_llm_model_path or str(
-            Path(__file__).resolve().parents[1] / "models" / "qwen3-1.7b-q4_k_m.gguf"
+            Path(__file__).resolve().parents[1]
+            / "models"
+            / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
         )
+        self.local_llm_gpu_layers = local_llm_gpu_layers
+        self.local_llm_max_tokens = local_llm_max_tokens
 
         self.catalog = CatalogStore(app_db_path)
         self.embedding_provider_name = embedding_provider
@@ -140,6 +146,8 @@ class DocumentRAGService:
                 ollama_client=self.ollama,
                 model=self.llm_model,
                 local_model_path=self.local_llm_model_path,
+                local_gpu_layers=self.local_llm_gpu_layers,
+                local_max_tokens=self.local_llm_max_tokens,
             )
             self.vector_store = ChromaVectorStore(chroma_path)
         except Exception as e:
@@ -222,6 +230,12 @@ class DocumentRAGService:
             "local_llm_model_path": stored.get(
                 "local_llm_model_path", self.local_llm_model_path
             ),
+            "local_llm_gpu_layers": stored.get(
+                "local_llm_gpu_layers", self.local_llm_gpu_layers
+            ),
+            "local_llm_max_tokens": stored.get(
+                "local_llm_max_tokens", self.local_llm_max_tokens
+            ),
             "embedding_model": stored.get("embedding_model", self.embedding_model),
             "llm_model": stored.get("llm_model", self.llm_model),
             "temperature": stored.get("temperature", self.temperature),
@@ -235,6 +249,8 @@ class DocumentRAGService:
             "ollama_url",
             "generation_provider",
             "local_llm_model_path",
+            "local_llm_gpu_layers",
+            "local_llm_max_tokens",
             "embedding_model",
             "llm_model",
             "temperature",
@@ -833,6 +849,8 @@ class DocumentRAGService:
                 "embedding_model": self.embedding_model,
                 "llm_model": self.llm_model,
                 "local_llm_model_path": self.local_llm_model_path,
+                "local_llm_gpu_layers": self.local_llm_gpu_layers,
+                "local_llm_max_tokens": self.local_llm_max_tokens,
             },
             "storage": self.vector_store.check_storage(),
             "stats": self.get_stats(),

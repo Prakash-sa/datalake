@@ -148,7 +148,11 @@ export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
           <Row label="Provider" value={data.models.generation_provider} />
           <Row label="Generation model" value={data.models.llm_model} />
           {data.models.generation_provider === 'local' && (
-            <Row label="Model file" value={data.models.local_llm_model_path} />
+            <>
+              <Row label="Model file" value={data.models.local_llm_model_path} />
+              <Row label="GPU layers" value={String(data.models.local_llm_gpu_layers)} />
+              <Row label="Max answer tokens" value={String(data.models.local_llm_max_tokens)} />
+            </>
           )}
           {data.models.generation_provider === 'ollama' && (
             <Row label="Endpoint" value={data.models.ollama_url} />

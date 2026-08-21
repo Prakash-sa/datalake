@@ -65,7 +65,9 @@ function mockBackend({
           settings: {
             ollama_url: 'http://127.0.0.1:11434',
             generation_provider: generationProvider,
-            local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+            local_llm_model_path: '/models/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+            local_llm_gpu_layers: 12,
+            local_llm_max_tokens: 256,
             embedding_model: 'qwen3-embedding:0.6b',
             llm_model: 'qwen3:4b',
             temperature: 0.1,
@@ -94,7 +96,7 @@ describe('FirstRunSetup', () => {
     renderSetup();
 
     expect(await screen.findByText(/Local GGUF model file is missing/i)).toBeTruthy();
-    expect(screen.getByText(/qwen3-1.7b-q4_k_m.gguf/)).toBeTruthy();
+    expect(screen.getByText(/qwen2.5-1.5b-instruct-q4_k_m.gguf/)).toBeTruthy();
   });
 
   it('reports the active local generation model once ready', async () => {

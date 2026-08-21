@@ -17,7 +17,9 @@ function diagnostics(overrides: Record<string, unknown> = {}) {
     models: {
       ollama_url: 'http://127.0.0.1:11434',
       generation_provider: 'local',
-      local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+      local_llm_model_path: '/models/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+      local_llm_gpu_layers: 12,
+      local_llm_max_tokens: 256,
       embedding_model: 'qwen3-embedding:0.6b',
       llm_model: 'qwen3:4b',
     },
@@ -106,6 +108,14 @@ describe('DiagnosticsView', () => {
     expect(screen.getByText('7')).toBeTruthy();
   });
 
+  it('reports local generation tuning', async () => {
+    mockBackend();
+    render(<DiagnosticsView apiUrl="http://api" />);
+
+    expect(await screen.findByText('12')).toBeTruthy();
+    expect(screen.getByText('256')).toBeTruthy();
+  });
+
   it('reports runtime and paths', async () => {
     mockBackend();
     render(<DiagnosticsView apiUrl="http://api" />);
@@ -141,7 +151,9 @@ describe('DiagnosticsView', () => {
         models: {
           ollama_url: 'http://127.0.0.1:11434',
           generation_provider: 'ollama',
-          local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+          local_llm_model_path: '/models/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+          local_llm_gpu_layers: 12,
+          local_llm_max_tokens: 256,
           embedding_model: 'qwen3-embedding:0.6b',
           llm_model: 'qwen3:4b',
         },
@@ -160,7 +172,9 @@ describe('DiagnosticsView', () => {
         models: {
           ollama_url: 'http://127.0.0.1:11434',
           generation_provider: 'ollama',
-          local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+          local_llm_model_path: '/models/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+          local_llm_gpu_layers: 12,
+          local_llm_max_tokens: 256,
           embedding_model: 'qwen3-embedding:0.6b',
           llm_model: 'qwen3:4b',
         },

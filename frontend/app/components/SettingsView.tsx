@@ -18,6 +18,8 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
   const [ollamaUrl, setOllamaUrl] = useState('');
   const [generationProvider, setGenerationProvider] = useState<'local' | 'ollama'>('local');
   const [localLlmModelPath, setLocalLlmModelPath] = useState('');
+  const [localLlmGpuLayers, setLocalLlmGpuLayers] = useState(12);
+  const [localLlmMaxTokens, setLocalLlmMaxTokens] = useState(256);
   const [embeddingModel, setEmbeddingModel] = useState('');
   const [llmModel, setLlmModel] = useState('');
   const [temperature, setTemperature] = useState(0.1);
@@ -27,6 +29,8 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
     setOllamaUrl(next.ollama_url);
     setGenerationProvider(next.generation_provider);
     setLocalLlmModelPath(next.local_llm_model_path);
+    setLocalLlmGpuLayers(next.local_llm_gpu_layers);
+    setLocalLlmMaxTokens(next.local_llm_max_tokens);
     setEmbeddingModel(next.embedding_model);
     setLlmModel(next.llm_model);
     setTemperature(next.temperature);
@@ -63,6 +67,8 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
       ollama_url: ollamaUrl,
       generation_provider: generationProvider,
       local_llm_model_path: localLlmModelPath,
+      local_llm_gpu_layers: localLlmGpuLayers,
+      local_llm_max_tokens: localLlmMaxTokens,
       embedding_model: embeddingModel,
       llm_model: llmModel,
       temperature,
@@ -215,6 +221,32 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
               className={field}
               disabled={generationProvider !== 'local'}
             />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-200">Local GPU layers</span>
+            <input
+              type="number"
+              min={0}
+              max={999}
+              value={localLlmGpuLayers}
+              onChange={(e) => setLocalLlmGpuLayers(Number(e.target.value))}
+              className={field}
+              disabled={generationProvider !== 'local'}
+            />
+            <span className="mt-1 block text-xs text-zinc-500">Use 0 for CPU-only.</span>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-200">Max answer tokens</span>
+            <input
+              type="number"
+              min={32}
+              max={4096}
+              value={localLlmMaxTokens}
+              onChange={(e) => setLocalLlmMaxTokens(Number(e.target.value))}
+              className={field}
+              disabled={generationProvider !== 'local'}
+            />
+            <span className="mt-1 block text-xs text-zinc-500">Lower values answer faster.</span>
           </label>
           <label className="block text-sm sm:col-span-2">
             <span className="font-medium text-zinc-200">Ollama URL</span>
