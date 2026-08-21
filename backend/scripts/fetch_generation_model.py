@@ -54,7 +54,10 @@ def main() -> int:
         return 0
 
     with tempfile.NamedTemporaryFile(
-        prefix="rag-generation-model-", suffix=".gguf", delete=False
+        prefix=f"{MODEL_FILENAME}.",
+        suffix=".tmp",
+        dir=MODEL_DIR,
+        delete=False,
     ) as tmp:
         tmp_path = Path(tmp.name)
 

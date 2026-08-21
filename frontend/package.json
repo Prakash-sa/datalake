@@ -2,8 +2,12 @@
   "name": "rag-query-frontend",
   "version": "0.1.0",
   "description": "Production desktop and web UI for the Document RAG Engine",
-  "author": "Prakash Saini",
+  "author": {
+    "name": "Prakash Saini",
+    "email": "sainiprakash525@gmail.com"
+  },
   "private": true,
+  "desktopName": "rag-query-engine",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Prakash-sa/local-rag.git"

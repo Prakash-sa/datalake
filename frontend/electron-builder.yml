@@ -41,6 +41,8 @@ win:
 
 linux:
   category: Development
+  maintainer: Prakash Saini <sainiprakash525@gmail.com>
+  syncDesktopName: true
   target:
     - AppImage
     - deb
