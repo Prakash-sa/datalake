@@ -33,6 +33,7 @@ class StubRagService:
     def __init__(self) -> None:
         self.catalog = None
         self.deleted: list[str] = []
+        self.shutdown_called = False
 
     def get_stats(self) -> dict[str, Any]:
         return {
@@ -68,6 +69,9 @@ class StubRagService:
                 "metadata": {},
             }
         ]
+
+    def shutdown(self) -> None:
+        self.shutdown_called = True
 
 
 class StubJobService:

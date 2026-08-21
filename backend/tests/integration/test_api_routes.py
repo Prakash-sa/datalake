@@ -86,7 +86,7 @@ def _sse_events(body: str) -> list[dict]:
 
 
 def test_stream_endpoint_emits_sse_frames(client, stub_rag_service):
-    def fake_stream(user_query, k=5, min_score=None, cancel=None):
+    def fake_stream(user_query, k=5, min_score=None, answer_mode="balanced", cancel=None):
         yield {"event": "sources", "documents": [], "truncated_document_count": 0}
         yield {"event": "token", "text": "hi"}
         yield {"event": "done", "status": "success", "answer": "hi"}

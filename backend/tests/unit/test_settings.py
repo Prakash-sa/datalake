@@ -25,6 +25,7 @@ def test_explicit_app_db_path_wins():
 
 def test_development_profile_supplies_defaults(monkeypatch):
     monkeypatch.setenv("ENV", "development")
+    monkeypatch.delenv("DEBUG", raising=False)
     monkeypatch.delenv("LOG_LEVEL", raising=False)
     monkeypatch.delenv("WORKERS", raising=False)
 
