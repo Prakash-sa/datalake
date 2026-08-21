@@ -5,6 +5,19 @@ import type {
   RetrievedDocument,
 } from '@/types/electron';
 
+export type PerformanceMetrics = {
+  retrieval_time_seconds?: number | null;
+  first_token_time_seconds?: number | null;
+  generation_time_seconds?: number | null;
+  total_time_seconds?: number | null;
+  tokens_per_second?: number | null;
+  generated_token_count?: number;
+  context_document_count?: number;
+  retrieved_document_count?: number;
+  truncated_document_count?: number;
+  answer_mode?: AnswerMode;
+};
+
 export type ChatStreamEvent =
   | { event: 'conversation'; conversation_id: string; title: string }
   | {
@@ -12,8 +25,9 @@ export type ChatStreamEvent =
       documents: RetrievedDocument[];
       truncated_document_count: number;
       answer_mode?: AnswerMode;
+      metrics?: PerformanceMetrics;
     }
-  | { event: 'token'; text: string }
+  | { event: 'token'; text: string; first_token_time_seconds?: number }
   | {
       event: 'done';
       status: string;
@@ -24,6 +38,7 @@ export type ChatStreamEvent =
       citations: CitationReport;
       processing_time_seconds: number;
       answer_mode?: AnswerMode;
+      metrics?: PerformanceMetrics;
     }
   | { event: 'error'; code: string; error: string; actionable?: boolean };
 
@@ -36,6 +51,7 @@ export type ChatMessage = {
   createdAt?: string;
   errorCode?: string | null;
   streaming?: boolean;
+  performance?: PerformanceMetrics;
 };
 
 export type ConversationSummary = {

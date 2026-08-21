@@ -1,5 +1,18 @@
 export {};
 
+export interface PerformanceMetrics {
+  retrieval_time_seconds?: number | null;
+  first_token_time_seconds?: number | null;
+  generation_time_seconds?: number | null;
+  total_time_seconds?: number | null;
+  tokens_per_second?: number | null;
+  generated_token_count?: number;
+  context_document_count?: number;
+  retrieved_document_count?: number;
+  truncated_document_count?: number;
+  answer_mode?: AnswerMode;
+}
+
 /** One frame from the backend's streaming query endpoint. */
 export type StreamEvent =
   | {
@@ -7,8 +20,9 @@ export type StreamEvent =
       documents: RetrievedDocument[];
       truncated_document_count: number;
       answer_mode?: AnswerMode;
+      metrics?: PerformanceMetrics;
     }
-  | { event: 'token'; text: string }
+  | { event: 'token'; text: string; first_token_time_seconds?: number }
   | {
       event: 'done';
       status: string;
@@ -19,6 +33,7 @@ export type StreamEvent =
       processing_time_seconds?: number;
       code?: string;
       answer_mode?: AnswerMode;
+      metrics?: PerformanceMetrics;
     }
   | { event: 'error'; code: string; error: string; actionable?: boolean };
 

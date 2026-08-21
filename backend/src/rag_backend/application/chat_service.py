@@ -29,7 +29,7 @@ from rag_backend.application.prompts import (
     render_history,
     select_context_documents,
 )
-from rag_backend.application.rag_service import DocumentRAGService
+from rag_backend.application.rag_service import DocumentRAGService, build_performance_metrics
 from rag_backend.errors import CancelledError, ErrorCode, RagError, RetrievalError
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,7 @@ class ChatService:
         """
         started = datetime.now()
         question = question.strip()
+        retrieval_time = 0.0
 
         conversation_id = self._ensure_conversation(conversation_id, question)
         conversation = self._catalog.get_conversation(conversation_id) or {}
@@ -118,11 +119,13 @@ class ChatService:
         self._catalog.add_message(f"msg_{uuid4().hex}", conversation_id, "user", question)
 
         try:
+            retrieval_started = datetime.now()
             documents = self._rag.search_documents(
                 build_retrieval_query(question, history),
                 k=k or profile["k"],
                 min_score=min_score,
             )
+            retrieval_time = (datetime.now() - retrieval_started).total_seconds()
         except Exception as e:
             logger.error("Retrieval failed: %s", e, exc_info=True)
             yield {"event": "error", **RetrievalError(str(e)).to_dict()}
@@ -131,11 +134,20 @@ class ChatService:
         context_docs = select_context_documents(
             documents, token_budget=profile["context_token_budget"]
         )
+        truncated_document_count = len(documents) - len(context_docs)
+        source_metrics = build_performance_metrics(
+            retrieval_time=retrieval_time,
+            context_document_count=len(context_docs),
+            retrieved_document_count=len(documents),
+            truncated_document_count=truncated_document_count,
+            answer_mode=answer_mode,
+        )
         yield {
             "event": "sources",
             "documents": context_docs,
-            "truncated_document_count": len(documents) - len(context_docs),
+            "truncated_document_count": truncated_document_count,
             "answer_mode": answer_mode,
+            "metrics": source_metrics,
         }
 
         prompt = CHAT_ANSWER_TEMPLATE.format(
@@ -146,6 +158,8 @@ class ChatService:
         )
 
         parts: list[str] = []
+        generation_started = datetime.now()
+        first_token_time: float | None = None
         try:
             for token in self._rag.generation.stream_generate(
                 prompt,
@@ -155,7 +169,15 @@ class ChatService:
                 cancel=cancel,
             ):
                 parts.append(token)
-                yield {"event": "token", "text": token}
+                if first_token_time is None:
+                    first_token_time = (datetime.now() - started).total_seconds()
+                    yield {
+                        "event": "token",
+                        "text": token,
+                        "first_token_time_seconds": round(first_token_time, 3),
+                    }
+                else:
+                    yield {"event": "token", "text": token}
         except RagError as e:
             self._record_answer(conversation_id, "".join(parts), context_docs, error=e.code)
             yield {"event": "error", **e.to_dict()}
@@ -170,7 +192,19 @@ class ChatService:
 
         answer = clean_generated_answer("".join(parts))
         citations = validate_citations(answer, context_docs)
+        generation_time = (datetime.now() - generation_started).total_seconds()
         elapsed = (datetime.now() - started).total_seconds()
+        metrics = build_performance_metrics(
+            retrieval_time=retrieval_time,
+            generation_time=generation_time,
+            first_token_time=first_token_time,
+            total_time=elapsed,
+            answer=answer,
+            context_document_count=len(context_docs),
+            retrieved_document_count=len(documents),
+            truncated_document_count=truncated_document_count,
+            answer_mode=answer_mode,
+        )
 
         message = self._record_answer(conversation_id, answer, context_docs, citations)
         self._rag.stats["queries_processed"] += 1
@@ -185,6 +219,7 @@ class ChatService:
             "citations": citations,
             "processing_time_seconds": round(elapsed, 2),
             "answer_mode": answer_mode,
+            "metrics": metrics,
         }
 
     def _record_answer(

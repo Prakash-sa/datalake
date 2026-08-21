@@ -5,6 +5,7 @@ import {
   AlertCircle,
   ChevronRight,
   FileText,
+  Gauge,
   Loader2,
   MessageSquarePlus,
   Send,
@@ -17,6 +18,7 @@ import {
   type ChatMessage,
   type ChatStreamEvent,
   type ConversationSummary,
+  type PerformanceMetrics,
   explainChatError,
   streamChat,
 } from '@/lib/chat';
@@ -33,6 +35,69 @@ const ANSWER_MODES: Record<AnswerMode, { label: string; k: number }> = {
   balanced: { label: 'Balanced', k: 5 },
   deep: { label: 'Deep', k: 8 },
 };
+
+function formatSeconds(value: number | null | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+  if (value < 1) return `${Math.round(value * 1000)}ms`;
+  return `${value.toFixed(value < 10 ? 1 : 0)}s`;
+}
+
+function formatRate(value: number | null | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+  return `${value.toFixed(value < 10 ? 1 : 0)}/s`;
+}
+
+function modeLabel(mode: AnswerMode | undefined): string {
+  return mode ? ANSWER_MODES[mode].label : 'Balanced';
+}
+
+function PerformanceLine({
+  metrics,
+  streaming,
+}: {
+  metrics?: PerformanceMetrics;
+  streaming?: boolean;
+}) {
+  if (!metrics) return null;
+
+  const docs = metrics.context_document_count ?? 0;
+  const status = streaming
+    ? metrics.first_token_time_seconds
+      ? 'Generating'
+      : docs
+        ? 'Preparing answer'
+        : 'Searching'
+    : 'Performance';
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-zinc-800 pt-2 text-[11px] text-zinc-500">
+      <span className="inline-flex items-center gap-1 font-medium text-zinc-400">
+        {streaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Gauge className="h-3 w-3" />}
+        {status}
+      </span>
+      <span>{modeLabel(metrics.answer_mode)} mode</span>
+      {typeof metrics.context_document_count === 'number' && (
+        <span>{docs} context doc{docs === 1 ? '' : 's'}</span>
+      )}
+      {typeof metrics.retrieval_time_seconds === 'number' && (
+        <span>retrieval {formatSeconds(metrics.retrieval_time_seconds)}</span>
+      )}
+      {typeof metrics.first_token_time_seconds === 'number' && (
+        <span>first token {formatSeconds(metrics.first_token_time_seconds)}</span>
+      )}
+      {!streaming && (
+        <>
+          {typeof metrics.generation_time_seconds === 'number' && (
+            <span>generation {formatSeconds(metrics.generation_time_seconds)}</span>
+          )}
+          {typeof metrics.tokens_per_second === 'number' && (
+            <span>{formatRate(metrics.tokens_per_second)} tokens</span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 function Sources({ documents }: { documents: RetrievedDocument[] }) {
   const [open, setOpen] = useState(false);
@@ -110,6 +175,9 @@ function Bubble({ message }: { message: ChatMessage }) {
         )}
 
         {!isUser && <Sources documents={message.sources ?? []} />}
+        {!isUser && (
+          <PerformanceLine metrics={message.performance} streaming={message.streaming} />
+        )}
       </div>
     </div>
   );
@@ -193,7 +261,15 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
         setMessages((current) =>
           current.map((m, i) =>
             i === current.length - 1 && m.role === 'assistant'
-              ? { ...m, sources: event.documents }
+              ? {
+                  ...m,
+                  sources: event.documents,
+                  performance: {
+                    ...m.performance,
+                    ...event.metrics,
+                    answer_mode: event.answer_mode ?? event.metrics?.answer_mode,
+                  },
+                }
               : m,
           ),
         );
@@ -202,7 +278,17 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
         setMessages((current) =>
           current.map((m, i) =>
             i === current.length - 1 && m.role === 'assistant'
-              ? { ...m, content: m.content + event.text }
+              ? {
+                  ...m,
+                  content: m.content + event.text,
+                  performance:
+                    typeof event.first_token_time_seconds === 'number'
+                      ? {
+                          ...m.performance,
+                          first_token_time_seconds: event.first_token_time_seconds,
+                        }
+                      : m.performance,
+                }
               : m,
           ),
         );
@@ -220,6 +306,11 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
                   citations: event.citations,
                   sources: event.retrieved_documents ?? m.sources,
                   streaming: false,
+                  performance: {
+                    ...m.performance,
+                    ...event.metrics,
+                    answer_mode: event.answer_mode ?? event.metrics?.answer_mode,
+                  },
                 }
               : m,
           ),
@@ -257,7 +348,13 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
     setMessages((current) => [
       ...current,
       { id: `local_${Date.now()}`, role: 'user', content: question },
-      { id: `local_${Date.now()}_a`, role: 'assistant', content: '', streaming: true },
+      {
+        id: `local_${Date.now()}_a`,
+        role: 'assistant',
+        content: '',
+        streaming: true,
+        performance: { answer_mode: answerMode },
+      },
     ]);
 
     try {

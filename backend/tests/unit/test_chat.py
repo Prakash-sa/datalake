@@ -146,6 +146,13 @@ class TestTurns:
         assert "token" in events
         assert events[-1] == "done"
 
+    def test_sources_event_reports_retrieval_metrics(self, chat):
+        events = _run(chat, "How are rankings merged?")
+
+        sources = events[1]
+        assert sources["metrics"]["context_document_count"] == 1
+        assert sources["metrics"]["retrieval_time_seconds"] >= 0
+
     def test_the_answer_is_persisted_with_its_citations(self, chat):
         done = _run(chat, "How are rankings merged?")[-1]
 
@@ -174,6 +181,16 @@ class TestTurns:
         list(chat.stream_turn("How are rankings merged?", answer_mode="deep", k=8))
 
         assert rag.generation.seen_max_tokens == 512
+
+    def test_done_event_reports_generation_metrics(self, chat):
+        events = _run(chat, "How are rankings merged?")
+        first_token = next(e for e in events if e["event"] == "token")
+        done = events[-1]
+
+        assert first_token["first_token_time_seconds"] >= 0
+        assert done["metrics"]["first_token_time_seconds"] >= 0
+        assert done["metrics"]["generation_time_seconds"] >= 0
+        assert done["metrics"]["tokens_per_second"] is not None
 
     def test_answer_mode_adds_prompt_instruction(self, chat, rag):
         list(chat.stream_turn("How are rankings merged?", answer_mode="deep", k=8))

@@ -99,6 +99,16 @@ def test_sources_are_emitted_before_any_token(service):
     assert first_token > 0
 
 
+def test_sources_event_reports_retrieval_metrics(service):
+    _index(service)
+
+    sources = _collect(service, answer_mode="fast")[0]
+
+    assert sources["metrics"]["answer_mode"] == "fast"
+    assert sources["metrics"]["context_document_count"] == 1
+    assert sources["metrics"]["retrieval_time_seconds"] >= 0
+
+
 def test_empty_index_yields_a_no_results_done_event(service):
     events = _collect(service)
 
@@ -164,6 +174,19 @@ def test_answer_mode_controls_generation_cap(service):
     _collect(service, answer_mode="fast")
 
     assert service.generation.seen_max_tokens == 160
+
+
+def test_done_event_reports_generation_metrics(service):
+    _index(service)
+
+    events = _collect(service)
+    first_token = next(e for e in events if e["event"] == "token")
+    done = events[-1]
+
+    assert first_token["first_token_time_seconds"] >= 0
+    assert done["metrics"]["first_token_time_seconds"] >= 0
+    assert done["metrics"]["generation_time_seconds"] >= 0
+    assert done["metrics"]["tokens_per_second"] is not None
 
 
 def test_answer_mode_adds_prompt_instruction(service):

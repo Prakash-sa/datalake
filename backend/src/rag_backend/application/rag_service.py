@@ -32,6 +32,7 @@ from rag_backend.application.prompts import (
     answer_mode_instruction,
     build_context,
     clean_generated_answer,
+    estimate_tokens,
     select_context_documents,
 )
 from rag_backend.application.retrieval import (
@@ -68,6 +69,42 @@ ANSWER_MODE_PROFILES = {
     "balanced": {"k": 5, "context_token_budget": DEFAULT_CONTEXT_TOKEN_BUDGET, "max_tokens": 256},
     "deep": {"k": 8, "context_token_budget": 4500, "max_tokens": 512},
 }
+
+
+def _round_seconds(value: float | None) -> float | None:
+    return None if value is None else round(value, 3)
+
+
+def build_performance_metrics(
+    *,
+    retrieval_time: float,
+    generation_time: float | None = None,
+    first_token_time: float | None = None,
+    total_time: float | None = None,
+    answer: str = "",
+    context_document_count: int,
+    retrieved_document_count: int,
+    truncated_document_count: int,
+    answer_mode: str,
+) -> dict[str, Any]:
+    generated_tokens = estimate_tokens(answer) if answer else 0
+    tokens_per_second = (
+        round(generated_tokens / generation_time, 2)
+        if generation_time and generation_time > 0 and generated_tokens
+        else None
+    )
+    return {
+        "retrieval_time_seconds": _round_seconds(retrieval_time),
+        "first_token_time_seconds": _round_seconds(first_token_time),
+        "generation_time_seconds": _round_seconds(generation_time),
+        "total_time_seconds": _round_seconds(total_time),
+        "tokens_per_second": tokens_per_second,
+        "generated_token_count": generated_tokens,
+        "context_document_count": context_document_count,
+        "retrieved_document_count": retrieved_document_count,
+        "truncated_document_count": truncated_document_count,
+        "answer_mode": answer_mode,
+    }
 
 
 class DocumentRAGService:
@@ -532,14 +569,27 @@ class DocumentRAGService:
 
             start_time = datetime.now()
             profile = self.answer_profile(answer_mode)
+            retrieval_started = datetime.now()
             relevant_docs = self.search_documents(
                 user_query, k=k or profile["k"], min_score=min_score
             )
+            retrieval_time = (datetime.now() - retrieval_started).total_seconds()
 
             if not relevant_docs:
                 elapsed = (datetime.now() - start_time).total_seconds()
+                metrics = build_performance_metrics(
+                    retrieval_time=retrieval_time,
+                    total_time=elapsed,
+                    context_document_count=0,
+                    retrieved_document_count=0,
+                    truncated_document_count=0,
+                    answer_mode=answer_mode,
+                )
                 self._record_query_trace(
-                    user_query, [], "no_results", {"total_seconds": round(elapsed, 3)}
+                    user_query,
+                    [],
+                    "no_results",
+                    {"total_seconds": round(elapsed, 3), **metrics},
                 )
                 return {
                     "status": "no_results",
@@ -548,6 +598,7 @@ class DocumentRAGService:
                     "retrieved_documents": [],
                     "document_count": 0,
                     "processing_time_seconds": round(elapsed, 2),
+                    "metrics": metrics,
                 }
 
             # Only the documents that fit the budget are sent to the model, so
@@ -558,6 +609,7 @@ class DocumentRAGService:
             context = build_context(context_docs)
 
             degraded_code: str | None = None
+            generation_started = datetime.now()
             try:
                 answer = self.generation.generate(
                     GROUNDED_ANSWER_TEMPLATE.format(
@@ -581,6 +633,7 @@ class DocumentRAGService:
                 answer = f"Based on {len(context_docs)} relevant document(s):\n\n{context}"
 
             answer = clean_generated_answer(answer) if answer else "No answer generated"
+            generation_time = (datetime.now() - generation_started).total_seconds()
             citations = validate_citations(answer, context_docs)
             if not citations["valid"]:
                 # The model cited a source it was never given. Surface it rather
@@ -591,12 +644,22 @@ class DocumentRAGService:
                 )
 
             elapsed = (datetime.now() - start_time).total_seconds()
+            metrics = build_performance_metrics(
+                retrieval_time=retrieval_time,
+                generation_time=generation_time,
+                total_time=elapsed,
+                answer=answer,
+                context_document_count=len(context_docs),
+                retrieved_document_count=len(relevant_docs),
+                truncated_document_count=len(relevant_docs) - len(context_docs),
+                answer_mode=answer_mode,
+            )
             self.stats["queries_processed"] += 1
             self._record_query_trace(
                 user_query,
                 context_docs,
                 "degraded" if degraded_code else "success",
-                {"total_seconds": round(elapsed, 3)},
+                {"total_seconds": round(elapsed, 3), **metrics},
                 error_code=degraded_code,
                 citation_count=citations["citation_count"],
             )
@@ -612,6 +675,7 @@ class DocumentRAGService:
                 # Documents retrieved but dropped by the context budget.
                 "truncated_document_count": len(relevant_docs) - len(context_docs),
                 "answer_mode": answer_mode,
+                "metrics": metrics,
                 **({"code": degraded_code} if degraded_code else {}),
             }
         except ValueError as e:
@@ -646,13 +710,16 @@ class DocumentRAGService:
         """
         start_time = datetime.now()
         profile = self.answer_profile(answer_mode)
+        retrieval_time = 0.0
 
         try:
             if not user_query or len(user_query) > self.MAX_QUERY_LENGTH:
                 raise ValidationError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
+            retrieval_started = datetime.now()
             relevant_docs = self.search_documents(
                 user_query, k=k or profile["k"], min_score=min_score
             )
+            retrieval_time = (datetime.now() - retrieval_started).total_seconds()
         except ValidationError as e:
             self.stats["errors"] += 1
             self._record_query_trace(user_query, [], "error", {}, error_code=str(e.code))
@@ -668,8 +735,19 @@ class DocumentRAGService:
 
         if not relevant_docs:
             elapsed = (datetime.now() - start_time).total_seconds()
+            metrics = build_performance_metrics(
+                retrieval_time=retrieval_time,
+                total_time=elapsed,
+                context_document_count=0,
+                retrieved_document_count=0,
+                truncated_document_count=0,
+                answer_mode=answer_mode,
+            )
             self._record_query_trace(
-                user_query, [], "no_results", {"total_seconds": round(elapsed, 3)}
+                user_query,
+                [],
+                "no_results",
+                {"total_seconds": round(elapsed, 3), **metrics},
             )
             yield {
                 "event": "done",
@@ -679,17 +757,27 @@ class DocumentRAGService:
                 "retrieved_documents": [],
                 "citations": validate_citations("", []),
                 "processing_time_seconds": round(elapsed, 2),
+                "metrics": metrics,
             }
             return
 
         context_docs = select_context_documents(
             relevant_docs, token_budget=profile["context_token_budget"]
         )
+        truncated_document_count = len(relevant_docs) - len(context_docs)
+        source_metrics = build_performance_metrics(
+            retrieval_time=retrieval_time,
+            context_document_count=len(context_docs),
+            retrieved_document_count=len(relevant_docs),
+            truncated_document_count=truncated_document_count,
+            answer_mode=answer_mode,
+        )
         yield {
             "event": "sources",
             "documents": context_docs,
-            "truncated_document_count": len(relevant_docs) - len(context_docs),
+            "truncated_document_count": truncated_document_count,
             "answer_mode": answer_mode,
+            "metrics": source_metrics,
         }
 
         prompt = GROUNDED_ANSWER_TEMPLATE.format(
@@ -699,6 +787,8 @@ class DocumentRAGService:
         )
 
         parts: list[str] = []
+        generation_started = datetime.now()
+        first_token_time: float | None = None
         try:
             for token in self.generation.stream_generate(
                 prompt,
@@ -708,13 +798,22 @@ class DocumentRAGService:
                 cancel=cancel,
             ):
                 parts.append(token)
-                yield {"event": "token", "text": token}
+                if first_token_time is None:
+                    first_token_time = (datetime.now() - start_time).total_seconds()
+                    yield {
+                        "event": "token",
+                        "text": token,
+                        "first_token_time_seconds": round(first_token_time, 3),
+                    }
+                else:
+                    yield {"event": "token", "text": token}
         except RagError as e:
             self.stats["errors"] += 1
             self._record_query_trace(user_query, context_docs, "error", {}, error_code=str(e.code))
             yield {"event": "error", **e.to_dict()}
             return
 
+        generation_time = (datetime.now() - generation_started).total_seconds()
         elapsed = (datetime.now() - start_time).total_seconds()
 
         if cancel is not None and cancel.is_set():
@@ -733,12 +832,23 @@ class DocumentRAGService:
 
         answer = clean_generated_answer("".join(parts))
         citations = validate_citations(answer, context_docs)
+        metrics = build_performance_metrics(
+            retrieval_time=retrieval_time,
+            generation_time=generation_time,
+            first_token_time=first_token_time,
+            total_time=elapsed,
+            answer=answer,
+            context_document_count=len(context_docs),
+            retrieved_document_count=len(relevant_docs),
+            truncated_document_count=truncated_document_count,
+            answer_mode=answer_mode,
+        )
         self.stats["queries_processed"] += 1
         self._record_query_trace(
             user_query,
             context_docs,
             "success",
-            {"total_seconds": round(elapsed, 3)},
+            {"total_seconds": round(elapsed, 3), **metrics},
             citation_count=citations["citation_count"],
         )
 
@@ -749,9 +859,10 @@ class DocumentRAGService:
             "retrieved_documents": context_docs,
             "document_count": len(context_docs),
             "citations": citations,
-            "truncated_document_count": len(relevant_docs) - len(context_docs),
+            "truncated_document_count": truncated_document_count,
             "processing_time_seconds": round(elapsed, 2),
             "answer_mode": answer_mode,
+            "metrics": metrics,
         }
 
     def _record_query_trace(

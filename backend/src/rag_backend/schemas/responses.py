@@ -108,6 +108,21 @@ class CitationReport(BaseModel):
     supplied_source_count: int = 0
 
 
+class PerformanceMetrics(BaseModel):
+    """Server-side retrieval and generation timing for one answer."""
+
+    retrieval_time_seconds: float | None = None
+    first_token_time_seconds: float | None = None
+    generation_time_seconds: float | None = None
+    total_time_seconds: float | None = None
+    tokens_per_second: float | None = None
+    generated_token_count: int = 0
+    context_document_count: int = 0
+    retrieved_document_count: int = 0
+    truncated_document_count: int = 0
+    answer_mode: str = "balanced"
+
+
 class QueryResponse(BaseModel):
     """RAG query response."""
 
@@ -123,6 +138,7 @@ class QueryResponse(BaseModel):
     truncated_document_count: int = 0
     # Structured reason when the answer degraded to context-only.
     code: str | None = None
+    metrics: PerformanceMetrics | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
