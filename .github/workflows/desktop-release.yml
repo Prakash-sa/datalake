@@ -35,6 +35,16 @@ jobs:
           python-version: "3.12"
       - name: Install frontend dependencies
         run: npm ci
+      - name: Validate release tag matches app version
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          app_version="$(node -p "require('./package.json').version")"
+          expected_tag="rag-desktop-v${app_version}"
+          if [ "${GITHUB_REF_NAME}" != "${expected_tag}" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match frontend package version ${app_version}; expected ${expected_tag}."
+            exit 1
+          fi
       - name: Install backend dependencies
         shell: bash
         run: |
