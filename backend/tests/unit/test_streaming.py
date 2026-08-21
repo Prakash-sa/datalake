@@ -26,10 +26,14 @@ class StubGeneration:
         self.error = error
         self.seen_cancel: threading.Event | None = None
         self.seen_max_tokens: int | None = None
+        self.seen_stop: list[str] | None = None
+        self.prompts: list[str] = []
 
     def stream_generate(self, prompt, temperature=0.1, cancel=None, **kwargs):
+        self.prompts.append(prompt)
         self.seen_cancel = cancel
         self.seen_max_tokens = kwargs.get("max_tokens")
+        self.seen_stop = kwargs.get("stop")
         if self.error:
             raise self.error
         for token in self.tokens:
@@ -38,7 +42,7 @@ class StubGeneration:
             yield token
 
     def generate(self, prompt, temperature=0.1, **kwargs):
-        return "".join(self.stream_generate(prompt, temperature=temperature))
+        return "".join(self.stream_generate(prompt, temperature=temperature, **kwargs))
 
     def health(self):
         return {"status": "ready", "provider": self.name, "model": self.model_name}
@@ -160,3 +164,29 @@ def test_answer_mode_controls_generation_cap(service):
     _collect(service, answer_mode="fast")
 
     assert service.generation.seen_max_tokens == 160
+
+
+def test_answer_mode_adds_prompt_instruction(service):
+    _index(service)
+
+    _collect(service, answer_mode="fast")
+
+    assert "Answer in 1-3 short sentences" in service.generation.prompts[-1]
+
+
+def test_stop_sequences_are_sent_to_generation(service):
+    _index(service)
+
+    _collect(service)
+
+    assert "\nUser:" in service.generation.seen_stop
+
+
+def test_done_answer_is_cleaned_before_citation_validation(service):
+    _index(service)
+    service.generation = StubGeneration(["Assistant: Answer [S1].\nUser: next"])
+
+    done = _collect(service)[-1]
+
+    assert done["answer"] == "Answer [S1]."
+    assert done["citations"]["valid"] is True

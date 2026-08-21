@@ -55,7 +55,7 @@ try:
         request["prompt"],
         max_tokens=int(request["max_tokens"]),
         temperature=float(request["temperature"]),
-        stop=["</s>"],
+        stop=request["stop"] or ["</s>"],
         stream=False,
     )
     choices = result.get("choices", []) if isinstance(result, dict) else []
@@ -76,7 +76,11 @@ class GenerationProvider(Protocol):
     model_name: str
 
     def generate(
-        self, prompt: str, temperature: float, max_tokens: int | None = None
+        self,
+        prompt: str,
+        temperature: float,
+        max_tokens: int | None = None,
+        stop: list[str] | None = None,
     ) -> str:
         """Return a complete generated answer."""
 
@@ -85,6 +89,7 @@ class GenerationProvider(Protocol):
         prompt: str,
         temperature: float,
         max_tokens: int | None = None,
+        stop: list[str] | None = None,
         cancel: threading.Event | None = None,
     ) -> Iterator[str]:
         """Yield generated tokens."""
@@ -103,10 +108,18 @@ class OllamaGenerationProvider:
         self.model_name = model
 
     def generate(
-        self, prompt: str, temperature: float, max_tokens: int | None = None
+        self,
+        prompt: str,
+        temperature: float,
+        max_tokens: int | None = None,
+        stop: list[str] | None = None,
     ) -> str:
         return self.client.generate(
-            prompt, model=self.model_name, temperature=temperature, max_tokens=max_tokens
+            prompt,
+            model=self.model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stop=stop,
         )
 
     def stream_generate(
@@ -114,6 +127,7 @@ class OllamaGenerationProvider:
         prompt: str,
         temperature: float,
         max_tokens: int | None = None,
+        stop: list[str] | None = None,
         cancel: threading.Event | None = None,
     ) -> Iterator[str]:
         yield from self.client.stream_generate(
@@ -121,6 +135,7 @@ class OllamaGenerationProvider:
             model=self.model_name,
             temperature=temperature,
             max_tokens=max_tokens,
+            stop=stop,
             cancel=cancel,
         )
 
@@ -321,7 +336,11 @@ class LlamaCppGenerationProvider:
         return str(first.get("text") or "")
 
     def _generate_via_server(
-        self, prompt: str, temperature: float, max_tokens: int | None = None
+        self,
+        prompt: str,
+        temperature: float,
+        max_tokens: int | None = None,
+        stop: list[str] | None = None,
     ) -> str:
         server_url = self._ensure_server()
         result = self._json_request(
@@ -331,6 +350,7 @@ class LlamaCppGenerationProvider:
                 "prompt": prompt,
                 "max_tokens": max_tokens or self.max_tokens,
                 "temperature": temperature,
+                **({"stop": stop} if stop else {}),
                 "stream": False,
             },
         )
@@ -341,6 +361,7 @@ class LlamaCppGenerationProvider:
         prompt: str,
         temperature: float,
         max_tokens: int | None,
+        stop: list[str] | None,
         cancel: threading.Event | None,
     ) -> Iterator[str]:
         server_url = self._ensure_server()
@@ -350,6 +371,7 @@ class LlamaCppGenerationProvider:
                 "prompt": prompt,
                 "max_tokens": max_tokens or self.max_tokens,
                 "temperature": temperature,
+                **({"stop": stop} if stop else {}),
                 "stream": True,
             }
         ).encode("utf-8")
@@ -400,6 +422,7 @@ class LlamaCppGenerationProvider:
         *,
         max_tokens: int,
         context_window: int,
+        stop: list[str] | None,
         timeout: int,
     ) -> str:
         if self._llama_cli is None:
@@ -436,6 +459,7 @@ class LlamaCppGenerationProvider:
                     "--no-show-timings",
                     "--simple-io",
                     "--log-disable",
+                    *[item for marker in (stop or []) for item in ("--reverse-prompt", marker)],
                     "-o",
                     str(output_path),
                 ],
@@ -514,6 +538,7 @@ class LlamaCppGenerationProvider:
         *,
         max_tokens: int | None = None,
         context_window: int | None = None,
+        stop: list[str] | None = None,
         timeout: int = GENERATION_TIMEOUT_SECONDS,
     ) -> str:
         missing = self._missing_model_error()
@@ -528,6 +553,7 @@ class LlamaCppGenerationProvider:
             "prompt": prompt,
             "temperature": temperature,
             "gpu_layers": self.gpu_layers,
+            "stop": stop,
         }
         try:
             completed = subprocess.run(
@@ -576,6 +602,7 @@ class LlamaCppGenerationProvider:
         *,
         max_tokens: int | None = None,
         context_window: int | None = None,
+        stop: list[str] | None = None,
         timeout: int = GENERATION_TIMEOUT_SECONDS,
     ) -> str:
         missing = self._missing_model_error()
@@ -586,13 +613,16 @@ class LlamaCppGenerationProvider:
         tokens = max_tokens or self.max_tokens
         ctx = context_window or self.context_window
         if self._llama_server is not None and context_window is None:
-            return self._generate_via_server(prompt, temperature, max_tokens=max_tokens)
+            return self._generate_via_server(
+                prompt, temperature, max_tokens=max_tokens, stop=stop
+            )
         if self._llama_cli is not None:
             return self._run_llama_cli(
                 prompt,
                 temperature,
                 max_tokens=tokens,
                 context_window=ctx,
+                stop=stop,
                 timeout=timeout,
             )
         if self._llama_simple is not None:
@@ -602,6 +632,7 @@ class LlamaCppGenerationProvider:
             temperature,
             max_tokens=tokens,
             context_window=ctx,
+            stop=stop,
             timeout=timeout,
         )
 
@@ -629,24 +660,29 @@ class LlamaCppGenerationProvider:
         return str(first.get("text") or "")
 
     def generate(
-        self, prompt: str, temperature: float, max_tokens: int | None = None
+        self,
+        prompt: str,
+        temperature: float,
+        max_tokens: int | None = None,
+        stop: list[str] | None = None,
     ) -> str:
-        return self._run_child(prompt, temperature, max_tokens=max_tokens)
+        return self._run_child(prompt, temperature, max_tokens=max_tokens, stop=stop)
 
     def stream_generate(
         self,
         prompt: str,
         temperature: float,
         max_tokens: int | None = None,
+        stop: list[str] | None = None,
         cancel: threading.Event | None = None,
     ) -> Iterator[str]:
         if self._llama_server is not None:
-            yield from self._stream_via_server(prompt, temperature, max_tokens, cancel)
+            yield from self._stream_via_server(prompt, temperature, max_tokens, stop, cancel)
             return
         if cancel is not None and cancel.is_set():
             logger.info("Local generation cancelled by caller before start")
             return
-        text = self.generate(prompt, temperature, max_tokens=max_tokens)
+        text = self.generate(prompt, temperature, max_tokens=max_tokens, stop=stop)
         if cancel is not None and cancel.is_set():
             logger.info("Local generation cancelled by caller after completion")
             return

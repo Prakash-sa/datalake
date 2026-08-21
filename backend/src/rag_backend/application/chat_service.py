@@ -21,8 +21,11 @@ from rag_backend.application.citations import validate_citations
 from rag_backend.application.prompts import (
     CHAT_ANSWER_TEMPLATE,
     CHAT_PROMPT_VERSION,
+    GENERATION_STOP_SEQUENCES,
+    answer_mode_instruction,
     build_context,
     build_retrieval_query,
+    clean_generated_answer,
     render_history,
     select_context_documents,
 )
@@ -139,6 +142,7 @@ class ChatService:
             context=build_context(context_docs) if context_docs else "(no documents matched)",
             history=render_history(history),
             query=question,
+            answer_mode_instruction=answer_mode_instruction(answer_mode),
         )
 
         parts: list[str] = []
@@ -147,6 +151,7 @@ class ChatService:
                 prompt,
                 temperature=self._rag.temperature,
                 max_tokens=profile["max_tokens"],
+                stop=GENERATION_STOP_SEQUENCES,
                 cancel=cancel,
             ):
                 parts.append(token)
@@ -163,7 +168,7 @@ class ChatService:
             yield {"event": "error", **CancelledError("Generation cancelled").to_dict()}
             return
 
-        answer = "".join(parts).strip()
+        answer = clean_generated_answer("".join(parts))
         citations = validate_citations(answer, context_docs)
         elapsed = (datetime.now() - started).total_seconds()
 

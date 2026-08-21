@@ -26,9 +26,12 @@ from rag_backend.application.ingestion_service import (
 )
 from rag_backend.application.prompts import (
     DEFAULT_CONTEXT_TOKEN_BUDGET,
+    GENERATION_STOP_SEQUENCES,
     GROUNDED_ANSWER_TEMPLATE,
     PROMPT_VERSION,
+    answer_mode_instruction,
     build_context,
+    clean_generated_answer,
     select_context_documents,
 )
 from rag_backend.application.retrieval import (
@@ -557,9 +560,14 @@ class DocumentRAGService:
             degraded_code: str | None = None
             try:
                 answer = self.generation.generate(
-                    GROUNDED_ANSWER_TEMPLATE.format(context=context, query=user_query),
+                    GROUNDED_ANSWER_TEMPLATE.format(
+                        context=context,
+                        query=user_query,
+                        answer_mode_instruction=answer_mode_instruction(answer_mode),
+                    ),
                     temperature=self.temperature,
                     max_tokens=profile["max_tokens"],
+                    stop=GENERATION_STOP_SEQUENCES,
                 )
             except RagError as llm_error:
                 # Degrade to context-only so retrieval stays usable without a
@@ -572,7 +580,7 @@ class DocumentRAGService:
                 logger.warning("Generation unavailable (%s): %s", degraded_code, llm_error)
                 answer = f"Based on {len(context_docs)} relevant document(s):\n\n{context}"
 
-            answer = answer.strip() if answer else "No answer generated"
+            answer = clean_generated_answer(answer) if answer else "No answer generated"
             citations = validate_citations(answer, context_docs)
             if not citations["valid"]:
                 # The model cited a source it was never given. Surface it rather
@@ -685,7 +693,9 @@ class DocumentRAGService:
         }
 
         prompt = GROUNDED_ANSWER_TEMPLATE.format(
-            context=build_context(context_docs), query=user_query
+            context=build_context(context_docs),
+            query=user_query,
+            answer_mode_instruction=answer_mode_instruction(answer_mode),
         )
 
         parts: list[str] = []
@@ -694,6 +704,7 @@ class DocumentRAGService:
                 prompt,
                 temperature=self.temperature,
                 max_tokens=profile["max_tokens"],
+                stop=GENERATION_STOP_SEQUENCES,
                 cancel=cancel,
             ):
                 parts.append(token)
@@ -720,7 +731,7 @@ class DocumentRAGService:
             }
             return
 
-        answer = "".join(parts).strip()
+        answer = clean_generated_answer("".join(parts))
         citations = validate_citations(answer, context_docs)
         self.stats["queries_processed"] += 1
         self._record_query_trace(

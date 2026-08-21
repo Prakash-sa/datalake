@@ -173,10 +173,13 @@ class OllamaClient:
         temperature: float,
         stream: bool,
         max_tokens: int | None = None,
+        stop: list[str] | None = None,
     ) -> bytes:
         options: dict[str, object] = {"temperature": temperature}
         if max_tokens is not None:
             options["num_predict"] = max_tokens
+        if stop:
+            options["stop"] = stop
         return json.dumps(
             {
                 "model": model,
@@ -214,13 +217,19 @@ class OllamaClient:
         model: str,
         temperature: float = 0.1,
         max_tokens: int | None = None,
+        stop: list[str] | None = None,
         timeout: float = GENERATION_TIMEOUT_SECONDS,
     ) -> str:
         """Generate a complete answer, raising a structured error on failure."""
         try:
             request = self._generation_request(
                 self._generation_payload(
-                    prompt, model, temperature, stream=False, max_tokens=max_tokens
+                    prompt,
+                    model,
+                    temperature,
+                    stream=False,
+                    max_tokens=max_tokens,
+                    stop=stop,
                 )
             )
             with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -238,6 +247,7 @@ class OllamaClient:
         model: str,
         temperature: float = 0.1,
         max_tokens: int | None = None,
+        stop: list[str] | None = None,
         timeout: float = GENERATION_TIMEOUT_SECONDS,
         cancel: threading.Event | None = None,
     ) -> Iterator[str]:
@@ -250,7 +260,12 @@ class OllamaClient:
         try:
             request = self._generation_request(
                 self._generation_payload(
-                    prompt, model, temperature, stream=True, max_tokens=max_tokens
+                    prompt,
+                    model,
+                    temperature,
+                    stream=True,
+                    max_tokens=max_tokens,
+                    stop=stop,
                 )
             )
             with urllib.request.urlopen(request, timeout=timeout) as response:

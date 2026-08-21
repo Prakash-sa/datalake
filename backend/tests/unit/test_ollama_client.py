@@ -58,6 +58,22 @@ def test_generate_returns_the_response_field(monkeypatch, client):
         assert client.generate("prompt", model="llm") == "hello"
 
 
+def test_generation_payload_includes_token_cap_and_stop_sequences(client):
+    payload = json.loads(
+        client._generation_payload(
+            "prompt",
+            "llm",
+            temperature=0.2,
+            stream=False,
+            max_tokens=12,
+            stop=["\nUser:"],
+        ).decode("utf-8")
+    )
+
+    assert payload["options"]["num_predict"] == 12
+    assert payload["options"]["stop"] == ["\nUser:"]
+
+
 def test_generate_raises_model_unavailable_on_an_error_payload(monkeypatch, client):
     with (
         _fake_urlopen(monkeypatch, [json.dumps({"error": "model not found"}).encode()]),

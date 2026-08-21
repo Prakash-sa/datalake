@@ -26,17 +26,19 @@ class StubGeneration:
         self.tokens = tokens or ["Merged ", "with ", "RRF ", "[S1]."]
         self.prompts: list[str] = []
         self.seen_max_tokens: int | None = None
+        self.seen_stop: list[str] | None = None
 
     def stream_generate(self, prompt, temperature=0.1, cancel=None, **kwargs):
         self.prompts.append(prompt)
         self.seen_max_tokens = kwargs.get("max_tokens")
+        self.seen_stop = kwargs.get("stop")
         for token in self.tokens:
             if cancel is not None and cancel.is_set():
                 return
             yield token
 
     def generate(self, prompt, temperature=0.1, **kwargs):
-        return "".join(self.stream_generate(prompt, temperature=temperature))
+        return "".join(self.stream_generate(prompt, temperature=temperature, **kwargs))
 
     def health(self):
         return {"status": "ready", "provider": self.name, "model": self.model_name}
@@ -172,6 +174,25 @@ class TestTurns:
         list(chat.stream_turn("How are rankings merged?", answer_mode="deep", k=8))
 
         assert rag.generation.seen_max_tokens == 512
+
+    def test_answer_mode_adds_prompt_instruction(self, chat, rag):
+        list(chat.stream_turn("How are rankings merged?", answer_mode="deep", k=8))
+
+        assert "Give a more complete synthesis" in rag.generation.prompts[-1]
+
+    def test_stop_sequences_are_sent_to_generation(self, chat, rag):
+        list(chat.stream_turn("How are rankings merged?"))
+
+        assert "\nAssistant:" in rag.generation.seen_stop
+
+    def test_answer_is_cleaned_before_persistence(self, chat, rag):
+        rag.generation = StubGeneration(["Assistant: Merged with RRF [S1].\nUser: next"])
+
+        done = _run(chat, "How are rankings merged?")[-1]
+
+        conversation = chat.get_conversation(done["conversation_id"])
+        assert done["answer"] == "Merged with RRF [S1]."
+        assert conversation["messages"][1]["content"] == "Merged with RRF [S1]."
 
     def test_the_question_survives_a_cancelled_turn(self, chat):
         import threading

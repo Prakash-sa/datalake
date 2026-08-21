@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from rag_backend.application.prompts import (
+    answer_mode_instruction,
     build_context,
+    clean_generated_answer,
     estimate_tokens,
     select_context_documents,
 )
@@ -65,3 +67,17 @@ def test_build_context_renumbers_after_truncation():
 
     assert "[S1 | chunk_id=a" in context
     assert "chunk_id=b" not in context
+
+
+def test_answer_mode_instruction_falls_back_to_balanced():
+    assert answer_mode_instruction("unknown") == answer_mode_instruction("balanced")
+
+
+def test_clean_generated_answer_removes_chat_wrapper_artifacts():
+    answer = clean_generated_answer("Assistant: Python is a language [S1].\nUser: thanks")
+
+    assert answer == "Python is a language [S1]."
+
+
+def test_clean_generated_answer_keeps_plain_answers_unchanged():
+    assert clean_generated_answer("Python is a language [S1].") == "Python is a language [S1]."
