@@ -268,14 +268,5 @@ docs/             architecture, operations, security, ADRs
 
 ---
 
-## Status
-
-Working and tested: import, indexing, hybrid retrieval, streamed cited answers,
-the job queue, diagnostics, export and import, and the packaged Electron shell.
-
-Not yet done: code signing and notarization, and the clean-machine install and
-upgrade testing that depends on it. Distribution therefore means building from
-source for now.
-
 Documentation index: [docs/INDEX.md](docs/INDEX.md) ·
 Licence: [MIT](LICENSE) · Security policy: [SECURITY.md](SECURITY.md)

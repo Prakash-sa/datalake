@@ -468,3 +468,142 @@ class CatalogStore:
             "updated_at": row["updated_at"],
             "finished_at": row["finished_at"],
         }
+
+    # -- Conversations --------------------------------------------------------
+
+    def create_conversation(self, conversation_id: str, title: str) -> dict[str, Any]:
+        """Start a conversation."""
+        now = datetime.now(UTC).isoformat()
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO conversations (id, title, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (conversation_id, title, now, now),
+            )
+        return {
+            "id": conversation_id,
+            "title": title,
+            "created_at": now,
+            "updated_at": now,
+            "message_count": 0,
+        }
+
+    def list_conversations(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Conversations most recently updated first."""
+        with closing(self._connect()) as conn, conn:
+            rows = conn.execute(
+                """
+                SELECT c.*, COUNT(m.id) AS message_count
+                FROM conversations c
+                LEFT JOIN messages m ON m.conversation_id = c.id
+                GROUP BY c.id
+                ORDER BY c.updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "message_count": r["message_count"],
+            }
+            for r in rows
+        ]
+
+    def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
+        """A conversation with its messages in order."""
+        with closing(self._connect()) as conn, conn:
+            row = conn.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            messages = conn.execute(
+                "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at, id",
+                (conversation_id,),
+            ).fetchall()
+
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "messages": [self._message_from_row(m) for m in messages],
+        }
+
+    def add_message(
+        self,
+        message_id: str,
+        conversation_id: str,
+        role: str,
+        content: str,
+        citations: dict[str, Any] | None = None,
+        model: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append a message and mark the conversation as updated."""
+        now = datetime.now(UTC).isoformat()
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO messages (
+                    id, conversation_id, role, content,
+                    citations_json, model_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message_id,
+                    conversation_id,
+                    role,
+                    content,
+                    json.dumps(citations or {}),
+                    json.dumps(model or {}),
+                    now,
+                ),
+            )
+            conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
+        return {
+            "id": message_id,
+            "conversation_id": conversation_id,
+            "role": role,
+            "content": content,
+            "citations": citations or {},
+            "model": model or {},
+            "created_at": now,
+        }
+
+    def rename_conversation(self, conversation_id: str, title: str) -> bool:
+        """Set a conversation's title."""
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+                (title, datetime.now(UTC).isoformat(), conversation_id),
+            )
+        return cursor.rowcount > 0
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """Delete a conversation and its messages."""
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                "DELETE FROM conversations WHERE id = ?", (conversation_id,)
+            )
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _message_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "conversation_id": row["conversation_id"],
+            "role": row["role"],
+            "content": row["content"],
+            "citations": json.loads(row["citations_json"] or "{}"),
+            "model": json.loads(row["model_json"] or "{}"),
+            "created_at": row["created_at"],
+        }
+
