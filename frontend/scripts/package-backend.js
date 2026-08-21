@@ -58,11 +58,18 @@ const modelCheck = spawnSync(
   { encoding: 'utf8' },
 );
 if (modelCheck.status !== 0) {
-  console.error(
-    `Bundled generation model is missing: ${generationModel}\n` +
-      'Run backend/scripts/fetch_generation_model.py with LOCAL_LLM_GGUF_URL and LOCAL_LLM_GGUF_SHA256 set before packaging.',
-  );
-  process.exit(1);
+  if (process.env.ALLOW_MISSING_LOCAL_LLM === '1') {
+    console.warn(
+      `Bundled generation model is missing: ${generationModel}\n` +
+        'Continuing because ALLOW_MISSING_LOCAL_LLM=1. Search will work; written answers require a user-provided GGUF model or Ollama.',
+    );
+  } else {
+    console.error(
+      `Bundled generation model is missing: ${generationModel}\n` +
+        'Run backend/scripts/fetch_generation_model.py with LOCAL_LLM_GGUF_URL and LOCAL_LLM_GGUF_SHA256 set before packaging.',
+    );
+    process.exit(1);
+  }
 }
 
 const result = spawnSync(

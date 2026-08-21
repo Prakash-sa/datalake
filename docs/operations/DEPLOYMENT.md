@@ -53,7 +53,10 @@ the native matrix passes.
 Electron build on each native runner must pass, with SBOM and SHA-256 checksums
 generated and dependency and model licences reviewed. The release workflow also
 requires `LOCAL_LLM_GGUF_URL` and `LOCAL_LLM_GGUF_SHA256` so the bundled local
-generation model is reproducible and license-reviewed.
+generation model is reproducible and license-reviewed. Tester releases may set
+`ALLOW_MISSING_LOCAL_LLM=1` to publish without bundled written-answer generation;
+import and search still work, and users can add a GGUF model or switch to Ollama
+in Settings.
 
 **Unsigned early releases.** Allowed for friends, testers, developers, portfolio
 downloads, and open-source previews. macOS Gatekeeper may require System Settings

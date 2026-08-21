@@ -30,8 +30,16 @@ def sha256(path: Path) -> str:
 def main() -> int:
     url = os.environ.get("LOCAL_LLM_GGUF_URL")
     expected = os.environ.get("LOCAL_LLM_GGUF_SHA256", "").lower()
+    allow_missing = os.environ.get("ALLOW_MISSING_LOCAL_LLM") == "1"
 
     if not url or not expected:
+        if allow_missing:
+            print(
+                "LOCAL_LLM_GGUF_URL or LOCAL_LLM_GGUF_SHA256 is missing; "
+                "continuing without a bundled generation model for this tester build.",
+                file=sys.stderr,
+            )
+            return 0
         print(
             "LOCAL_LLM_GGUF_URL and LOCAL_LLM_GGUF_SHA256 are required for release "
             "packaging. Choose a distributable GGUF model, record its licence in "
