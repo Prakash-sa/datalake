@@ -6,18 +6,36 @@ Entry point is the package's __main__, with src/ on the analysis path so
 """
 
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 block_cipher = None
 backend_dir = Path(SPECPATH).resolve()
 src_dir = backend_dir / 'src'
+llama_datas = collect_data_files('llama_cpp')
+llama_binaries = collect_dynamic_libs('llama_cpp')
+llama_hiddenimports = collect_submodules('llama_cpp')
+chroma_hiddenimports = []
+for module in (
+    'chromadb.api',
+    'chromadb.auth',
+    'chromadb.db',
+    'chromadb.migrations',
+    'chromadb.proto',
+    'chromadb.quota',
+    'chromadb.rate_limit',
+    'chromadb.segment',
+    'chromadb.telemetry',
+    'chromadb.utils',
+):
+    chroma_hiddenimports.extend(collect_submodules(module))
 
 a = Analysis(
     [str(src_dir / 'rag_backend' / '__main__.py')],
     pathex=[str(src_dir)],
-    binaries=[],
+    binaries=llama_binaries,
     # The embedding model ships inside the sidecar; without it the app would
     # need Ollama to index anything.
-    datas=[(str(src_dir / 'rag_backend' / 'models'), 'rag_backend/models')],
+    datas=[(str(src_dir / 'rag_backend' / 'models'), 'rag_backend/models'), *llama_datas],
     hiddenimports=[
         'chromadb',
         'onnxruntime',
@@ -28,6 +46,8 @@ a = Analysis(
         'uvicorn.protocols.http.auto',
         'uvicorn.protocols.websockets.auto',
         'uvicorn.lifespan.on',
+        *chroma_hiddenimports,
+        *llama_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},

@@ -8,31 +8,10 @@ the versions below are the ones present when this file was last reviewed.
 
 ---
 
-## ⚠️ Unresolved licence conflict
-
-**PyMuPDF is dual-licensed under GNU AGPL-3.0 or a commercial Artifex licence.**
-This project declares MIT. AGPL-3.0 is strong copyleft, so distributing a binary
-that embeds PyMuPDF is not compatible with offering that binary under MIT.
-
-Resolve before distributing builds. The options are:
-
-1. Relicense this project under AGPL-3.0.
-2. Obtain a commercial PyMuPDF licence from Artifex.
-3. Replace PyMuPDF with a permissively licensed PDF parser, such as
-   [`pypdf`](https://pypi.org/project/pypdf/) (BSD-3-Clause) or
-   [`pdfminer.six`](https://pypi.org/project/pdfminer.six/) (MIT).
-
-PyMuPDF is used only in `parse_pdf_file`, so option 3 is contained, though PDF
-text-extraction quality would need re-evaluating against the eval corpus.
-
-Building and running from source is unaffected; this concerns redistribution.
-
----
-
 ## Bundled model
 
-The desktop build ships model weights inside the installer so that importing and
-searching work with no network access.
+The desktop build ships model weights inside the installer so that importing,
+searching, and default local answer generation work with no network access.
 
 | | |
 | --- | --- |
@@ -47,12 +26,16 @@ searching work with no network access.
 The archive is verified against the checksum above at build time. The weights are
 not committed to this repository.
 
-## Models obtained by the user
+## Bundled generation model
 
-Generation models are downloaded by the user through Ollama and are **not**
-distributed here. Their licences are set by their publishers and are not covered
-by this project's licence. Record any model the application recommends by
-default, with its digest and licence, before release.
+Release builds fetch a GGUF generation model through
+`backend/scripts/fetch_generation_model.py`, using `LOCAL_LLM_GGUF_URL` and
+`LOCAL_LLM_GGUF_SHA256` provided by CI secrets. Record the exact model source,
+digest, and licence here before publishing a binary release.
+
+Models downloaded by the user through Ollama are **not** distributed here. Their
+licences are set by their publishers and are not covered by this project's
+licence.
 
 ---
 
@@ -73,7 +56,8 @@ default, with its digest and licence, before release.
 | python-docx | 1.2.0 | MIT |
 | python-multipart | 0.0.32 | Apache-2.0 |
 | gunicorn | 26.0.0 | MIT |
-| **PyMuPDF** | **1.28.2** | **AGPL-3.0 or commercial — see above** |
+| pypdf | 6.x | BSD-3-Clause |
+| llama-cpp-python | 0.3.x | MIT |
 
 SQLite, including its FTS5 extension, ships with CPython and is in the public
 domain.
@@ -92,13 +76,14 @@ domain.
 ## External software
 
 **Ollama** is installed separately by the user and is not distributed with this
-application. It is optional and used only for generated prose answers.
+application. It is optional; the packaged app uses the bundled local generation
+model by default.
 
 ---
 
 ## Release checklist
 
 - [ ] Regenerate this file from `backend/uv.lock` and `frontend/package-lock.json`
-- [ ] Resolve the PyMuPDF licence conflict above
 - [ ] Confirm the bundled model checksum still matches
+- [ ] Record the bundled GGUF generation model source, digest, and licence
 - [ ] Attach the generated SBOM to the release

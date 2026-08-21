@@ -115,18 +115,18 @@ def parse_docx_file(path: Path) -> str:
 
 def parse_pdf_file(path: Path) -> str:
     try:
-        import fitz  # type: ignore
+        from pypdf import PdfReader
     except ImportError as e:
         raise ValueError(
-            "PDF ingestion requires PyMuPDF. Install the backend requirements first."
+            "PDF ingestion requires pypdf. Install the backend requirements first."
         ) from e
 
     parts: list[str] = []
-    with fitz.open(path) as document:
-        for page_index, page in enumerate(document):
-            text = page.get_text("text").strip()
-            if text:
-                parts.append(f"\n\n[Page {page_index + 1}]\n{text}")
+    reader = PdfReader(str(path))
+    for page_index, page in enumerate(reader.pages):
+        text = (page.extract_text() or "").strip()
+        if text:
+            parts.append(f"\n\n[Page {page_index + 1}]\n{text}")
     return "\n".join(parts)
 
 

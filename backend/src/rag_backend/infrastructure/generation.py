@@ -595,6 +595,58 @@ class LlamaCppGenerationProvider:
             return str(result.get("text") or "")
         return ""
 
+    def _run_in_process(
+        self,
+        prompt: str,
+        temperature: float,
+        *,
+        max_tokens: int | None = None,
+        context_window: int | None = None,
+        stop: list[str] | None = None,
+    ) -> str:
+        """Generate inside the current process for frozen PyInstaller bundles.
+
+        A frozen executable cannot reliably re-enter itself as ``python -c``.
+        Source checkouts continue to prefer the child-process path because it
+        isolates native llama.cpp crashes from the API server.
+        """
+        missing = self._missing_model_error()
+        if missing is not None:
+            self._load_error = missing
+            raise ModelUnavailableError(missing)
+
+        try:
+            from llama_cpp import Llama
+        except ImportError as exc:
+            raise ModelUnavailableError(
+                "llama-cpp-python is not bundled; switch to Ollama or rebuild with "
+                "the backend local-generation extra"
+            ) from exc
+
+        try:
+            llm = Llama(
+                model_path=self.model_path,
+                n_ctx=int(context_window or self.context_window),
+                n_gpu_layers=int(self.gpu_layers),
+                verbose=False,
+            )
+            result = llm(
+                prompt,
+                max_tokens=int(max_tokens or self.max_tokens),
+                temperature=float(temperature),
+                stop=stop or ["</s>"],
+                stream=False,
+            )
+        except Exception as exc:
+            message = str(exc)
+            self._load_error = message
+            raise GenerationError(message, code=ErrorCode.GENERATION_FAILED) from exc
+
+        choices = result.get("choices", []) if isinstance(result, dict) else []
+        if choices and isinstance(choices[0], dict):
+            return str(choices[0].get("text") or "")
+        return ""
+
     def _run_child(
         self,
         prompt: str,
@@ -627,6 +679,14 @@ class LlamaCppGenerationProvider:
             )
         if self._llama_simple is not None:
             return self._run_llama_simple(prompt, max_tokens=tokens, timeout=timeout)
+        if getattr(sys, "frozen", False):
+            return self._run_in_process(
+                prompt,
+                temperature,
+                max_tokens=tokens,
+                context_window=ctx,
+                stop=stop,
+            )
         return self._run_python_child(
             prompt,
             temperature,

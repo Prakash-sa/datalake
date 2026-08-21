@@ -11,9 +11,9 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "testing", "production"]
@@ -105,6 +105,18 @@ class Settings(BaseSettings):
     max_query_length: int = Field(default=1_000, ge=1, alias="MAX_QUERY_LENGTH")
     max_results: int = Field(default=100, ge=1, alias="MAX_RESULTS")
     query_timeout: int = Field(default=30, ge=1, alias="QUERY_TIMEOUT")
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def _coerce_debug(cls, value: Any) -> Any:
+        """Accept common profile words from polluted shell environments."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "production", "prod"}:
+                return False
+            if normalized in {"development", "dev"}:
+                return True
+        return value
 
     @computed_field  # type: ignore[prop-decorator]
     @property

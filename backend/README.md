@@ -17,7 +17,7 @@ Longer documentation lives under [`docs/`](../docs/INDEX.md):
 ```
 pyproject.toml       dependencies, lint, test, and build configuration
 rag-backend.spec     PyInstaller bundle for the desktop sidecar
-scripts/             build-time helpers, including the embedding model fetch
+scripts/             build-time helpers, including bundled model fetches
 src/rag_backend/
   app.py             create_app() factory
   __main__.py        python -m rag_backend
@@ -27,7 +27,7 @@ src/rag_backend/
   api/routes/        one module per endpoint group
   application/       use cases: retrieval, citations, jobs, evals, data transfer
   domain/            entities, job state machine, index fingerprints
-  infrastructure/    ONNX embeddings, Chroma, Ollama, SQLite catalog
+  infrastructure/    ONNX embeddings, Chroma, local generation, Ollama, SQLite catalog
 tests/{unit,integration}/
 ```
 

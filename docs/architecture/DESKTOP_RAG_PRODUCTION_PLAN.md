@@ -228,7 +228,7 @@ The current API expects already prepared `id` and `content` fields. A production
 
 First-release formats:
 
-- PDF using PyMuPDF.
+- PDF using `pypdf`.
 - DOCX using `python-docx`.
 - TXT and Markdown using standard decoding with charset detection.
 - HTML with scripts/styles removed before text extraction.
@@ -245,7 +245,7 @@ The ingestion pipeline should:
 6. Normalize whitespace without destroying paragraph boundaries.
 7. Split with a versioned recursive, token-budget-aware chunker.
 8. Preserve document, page, heading, and chunk metadata.
-9. Batch embeddings through Ollama.
+9. Batch embeddings through the configured embedding provider.
 10. Commit catalog and vector updates transactionally where possible.
 11. Persist progress and failures.
 12. Support cancellation and resumable retry.

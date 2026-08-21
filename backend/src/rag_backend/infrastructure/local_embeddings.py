@@ -2,9 +2,8 @@
 
 Removes Ollama from the critical path for indexing and search: the model runs
 inside the sidecar, so a fresh install can import documents and search them with
-no external software present. Ollama remains required only for generated prose
-answers, and the query pipeline already degrades to returning cited context when
-it is absent.
+no external software present. Generated prose uses the local GGUF provider by
+default; Ollama is available only as an optional alternate provider.
 
 Uses all-MiniLM-L6-v2, the same model and artifacts Chroma ships as its default.
 Output was verified identical to Chroma's own implementation (cosine 1.0), so

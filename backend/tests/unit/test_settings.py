@@ -44,6 +44,14 @@ def test_explicit_environment_variable_overrides_profile_default(monkeypatch):
     assert settings.log_level == "WARNING"
 
 
+def test_debug_accepts_profile_words_from_shell_environment(monkeypatch):
+    monkeypatch.setenv("DEBUG", "release")
+
+    settings = build_settings()
+
+    assert settings.debug is False
+
+
 def test_settings_are_immutable():
     settings = Settings()
 

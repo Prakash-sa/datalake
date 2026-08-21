@@ -169,6 +169,9 @@ the former only and lets the user proceed without a generation model.
 The embedding model ships inside the sidecar rather than being fetched on first
 run, which is what makes the offline claim true. `scripts/fetch_embedding_model.py`
 installs it at build time, verifying the archive against a published SHA-256.
+Release builds also fetch the bundled GGUF generation model through
+`scripts/fetch_generation_model.py`, with the URL and SHA-256 supplied as CI
+secrets so the exact model can be reviewed before distribution.
 
 Output was verified identical to Chroma's own ONNX implementation (cosine 1.0),
 so the two are interchangeable. Pooling ignores padding, so a vector does not

@@ -38,27 +38,33 @@ Build each platform on its own runner. macOS signing only works on macOS, and
 the sidecar contains architecture-specific binaries, so cross-building is not
 reliable. `.github/workflows/desktop-release.yml` runs the matrix.
 
-> **Before distributing builds**, resolve the licence conflict recorded in
-> [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md). Signing and notarization
-> are also not yet configured, so current artifacts are unsigned. See
+> **Before distributing builds**, provide the release-only model and signing
+> secrets, then review [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md). The
+> workflow intentionally fails when the bundled GGUF model checksum, code-signing
+> certificate, or macOS notarization credentials are missing. See
 > [Releasing](#releasing).
 
 ### Releasing
 
-Neither signing nor notarization is configured yet, so there is no public binary
-release. What follows is the process to complete first.
+There is still no public binary release until the external release inputs are
+present in GitHub Actions secrets and a clean matrix build has passed.
 
 **Gates.** Backend tests, frontend typecheck and export, eval fixtures, and an
 Electron build on each native runner must pass, with SBOM and SHA-256 checksums
-generated and dependency and model licences reviewed.
+generated and dependency and model licences reviewed. The release workflow also
+requires `LOCAL_LLM_GGUF_URL` and `LOCAL_LLM_GGUF_SHA256` so the bundled local
+generation model is reproducible and license-reviewed.
 
 **macOS.** Build on macOS. Sign with a Developer ID Application certificate,
 enable Hardened Runtime, notarize through App Store Connect, and staple the
-ticket. Validate with `codesign`, `spctl`, and an install on a clean machine.
+ticket. The workflow expects `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
+`APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. Validate with `codesign`, `spctl`,
+and an install on a clean machine.
 
 **Windows.** Build on Windows. Sign the NSIS installer and the shipped
 executables, including the Python sidecar where practical. Timestamp every
-signature and keep the publisher identity stable across releases.
+signature and keep the publisher identity stable across releases. The workflow
+expects `CSC_LINK` and `CSC_KEY_PASSWORD`.
 
 **Linux.** Build AppImage and DEB on the oldest supported Ubuntu baseline and
 publish SHA-256 checksums. Electron's auto-updater does not cover Linux, so ship
