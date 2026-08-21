@@ -1,8 +1,10 @@
 /**
  * Captures screenshots of the running desktop app for the README.
  *
- * Not part of the CI suite: it needs a backend seeded with documents on the
- * default port. Run with `npx playwright test e2e/capture.spec.ts`.
+ * Not part of the CI suite: it needs a backend seeded with documents and the
+ * frontend dev server running. Example:
+ * `NEXT_PUBLIC_API_URL=http://127.0.0.1:8123 npm run dev`
+ * `CAPTURE_API_URL=http://127.0.0.1:8123 npx playwright test e2e/capture.spec.ts`
  */
 import { test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'node:path';
@@ -19,10 +21,9 @@ test.beforeAll(async () => {
     args: [ROOT],
     env: {
       ...cleanEnv,
-      NODE_ENV: 'production',
-      RAG_FORCE_PACKAGED: 'true',
-      // Talk to the pre-seeded backend on the default port instead of
-      // spawning an empty one.
+      NEXT_PUBLIC_API_URL: process.env.CAPTURE_API_URL || 'http://127.0.0.1:8123',
+      RAG_DESKTOP_URL: process.env.CAPTURE_APP_URL || 'http://localhost:3000',
+      // Talk to the pre-seeded backend instead of spawning an empty one.
       RAG_START_BACKEND: 'false',
       RAG_ENABLE_UPDATES: 'false',
     },
@@ -56,9 +57,12 @@ test('capture every view', async () => {
     await window.waitForTimeout(800);
   }
 
-  // Query with results.
-  await window.locator('#query').fill('How are dense and lexical results combined?');
-  await window.getByRole('button', { name: /^Search$/ }).click();
+  // Chat with results and expanded sources.
+  await window.getByRole('button', { name: /^Fast$/ }).click();
+  await window
+    .getByPlaceholder('Ask a question about your documents…')
+    .fill('How does the app keep document answers local and cited?');
+  await window.getByRole('button', { name: /^Send$/ }).click();
   // Wait for streaming to finish rather than guessing: the Stop button is only
   // present while generating.
   await window
@@ -66,6 +70,11 @@ test('capture every view', async () => {
     .waitFor({ state: 'detached', timeout: 240_000 })
     .catch(() => {});
   await window.waitForTimeout(1200);
+  const showSources = window.getByRole('button', { name: /Show \d+ sources/ }).last();
+  if (await showSources.isVisible().catch(() => false)) {
+    await showSources.click();
+    await window.waitForTimeout(300);
+  }
   await shot('02-query-and-sources');
 
   await window.getByRole('button', { name: /Library/ }).click();

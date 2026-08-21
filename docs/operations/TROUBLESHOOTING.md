@@ -1,27 +1,31 @@
 # Troubleshooting
 
 Most problems surface as a structured error code in the interface. Look at
-**Diagnostics** first: it reports the embedding provider, Ollama reachability,
-disk space, and index state on one screen.
+**Diagnostics** first: it reports the embedding provider, generation provider,
+local model file, disk space, and index state on one screen.
 
 ---
 
 ## Answers do not appear, but search works
 
-Expected when Ollama is not running. Embeddings run in-process, so importing and
-searching work regardless; only written answers need a generation model.
+Expected when no local GGUF model is configured and Ollama is not selected or
+not running. Embeddings run in-process, so importing and searching work
+regardless; only written answers need a generation model.
 
 ```bash
 ollama serve
 ollama pull qwen3:1.7b
 ```
 
-The application selects whichever generation model you have installed, so the
-tag does not need to match what is configured.
+Alternatively, keep the default local provider and point **Settings → Local GGUF
+model** at a compatible `.gguf` file. When Ollama is selected, the application
+chooses an installed generation-capable model, so the tag does not need to match
+what is configured.
 
 ## `model_unavailable`
 
-Either Ollama is unreachable, or no generation model is installed.
+Either the configured local GGUF model is missing/unloadable, or Ollama is
+selected and unreachable, or no generation-capable model is installed.
 
 ```bash
 curl http://127.0.0.1:11434/api/tags   # reachable?

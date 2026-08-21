@@ -110,11 +110,11 @@ Every transition is written to SQLite, so progress survives a restart and the UI
 can render per-document status, actionable error codes, retry, and cancel.
 Transitions are validated in `domain/jobs.py` as pure logic.
 
-A single worker thread drains the queue. Ingestion is I/O bound on Ollama and
-Chroma, and Chroma expects one writer, so concurrency would add risk without
-throughput. The application owns the worker: `lifespan` starts it and stops it,
-and `enqueue()` deliberately does not spawn one, which keeps the queue drivable
-synchronously in tests.
+A single worker thread drains the queue. Ingestion is bounded by parsing,
+embedding, and Chroma writes, and Chroma expects one writer, so concurrency
+would add risk without throughput. The application owns the worker: `lifespan`
+starts it and stops it, and `enqueue()` deliberately does not spawn one, which
+keeps the queue drivable synchronously in tests.
 
 Cancellation is checked at stage boundaries, so a cancelled import stops between
 stages rather than leaving a half-committed index. Only failed jobs can be
@@ -140,27 +140,35 @@ A size-rotating file handler writes to `<APP_DATA_DIR>/logs`, bounding disk use
 at `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)`. An unwritable log directory is
 logged and skipped rather than preventing startup.
 
-## Embeddings
+## Embeddings and Generation
 
-Two providers share one interface, selected by `EMBEDDING_PROVIDER`:
+Embedding providers share one interface, selected by `EMBEDDING_PROVIDER`:
 
 | Provider | Runtime | Needs Ollama |
 | --- | --- | --- |
 | `local` (default) | all-MiniLM-L6-v2, 384-dim, ONNX Runtime in-process | no |
 | `ollama` | whatever model the daemon serves | yes |
 
-The local provider is what removes the external prerequisite. Importing and
-searching work on a machine with nothing installed; Ollama is needed only for
-generated prose, and `query_documents` already degrades to returning cited
-context when it is absent. Readiness reports embeddings as a capability separate
-from Ollama, so "can I search" and "can I get an answer" are distinguishable.
-The desktop UI gates on the former only: first-run setup presents Ollama as an
-optional enhancement and lets the user proceed without it.
+The local embedding provider is what removes the search prerequisite. Importing
+and searching work on a machine with nothing installed. Written answers use the
+local GGUF generation provider by default; Ollama is an optional provider for
+people who prefer a daemon-managed model. `query_documents` still degrades to
+returning cited context when no generation model is available.
 
-The model ships inside the sidecar rather than being fetched on first run, which
-is what makes the offline claim true. `scripts/fetch_embedding_model.py` installs
-it at build time, verifying the archive against a published SHA-256. A bundle
-missing its model falls back to Ollama rather than failing to start.
+Generation providers are selected by `GENERATION_PROVIDER`:
+
+| Provider | Runtime | Needs Ollama |
+| --- | --- | --- |
+| `local` (default) | GGUF model through llama.cpp/`llama-server` | no |
+| `ollama` | whatever generation model the daemon serves | yes |
+
+Readiness reports embeddings and generation as separate capabilities, so "can I
+search" and "can I get an answer" are distinguishable. The desktop UI gates on
+the former only and lets the user proceed without a generation model.
+
+The embedding model ships inside the sidecar rather than being fetched on first
+run, which is what makes the offline claim true. `scripts/fetch_embedding_model.py`
+installs it at build time, verifying the archive against a published SHA-256.
 
 Output was verified identical to Chroma's own ONNX implementation (cosine 1.0),
 so the two are interchangeable. Pooling ignores padding, so a vector does not

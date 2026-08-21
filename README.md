@@ -10,9 +10,8 @@ runs inside the app.
 
 ![Diagnostics](docs/assets/screenshots/05-diagnostics.png)
 
-> Diagnostics reports the embedding provider running in-process, its vector
-> width, and that no external software is required. Ollama is listed separately
-> and marked *generation only*.
+> Diagnostics reports local embeddings, local GGUF generation, disk health, and
+> index state without exposing prompts or document text.
 
 ---
 
@@ -39,9 +38,9 @@ runs inside the app.
 | **Chat** | Multi-turn conversations with streamed, cited answers and follow-up questions |
 | **Operate** | A job queue with progress, retry, and cancel; diagnostics; export, import, and backup |
 
-Generated prose answers are the only feature that needs a local
-[Ollama](https://ollama.com) daemon. Without it, the app still imports, searches,
-and returns ranked cited passages.
+Generated prose answers use the bundled local GGUF runtime by default. Ollama is
+optional for people who prefer to run their own model daemon; search and
+retrieval continue to work even when no generation model is available.
 
 ---
 
@@ -50,7 +49,8 @@ and returns ranked cited passages.
 ### Chat
 
 Answers stream in and cite their sources. Follow-up questions carry the
-conversation's context, and each answer's sources can be expanded inline.
+conversation's context, sources expand inline, and each answer reports the mode
+and performance metrics used to produce it.
 
 ![Query and sources](docs/assets/screenshots/02-query-and-sources.png)
 
@@ -70,7 +70,8 @@ progress, and attempt count, and can be cancelled or retried.
 
 ### Settings
 
-Model selection, retrieval parameters, and one-click pulls for anything missing.
+Local GGUF generation settings, optional Ollama configuration, retrieval
+defaults, and one-click pulls for anything missing.
 
 ![Settings](docs/assets/screenshots/06-settings.png)
 
@@ -196,15 +197,17 @@ make desktop      # run the Electron app
 
 `make help` lists every target.
 
-For generated answers, install Ollama and pull a small model. Larger models are
-slow on CPU-only machines:
+The desktop app uses a local GGUF model by default. To use Ollama instead,
+switch the generation provider in **Settings** and pull a small model. Larger
+models are slow on CPU-only machines:
 
 ```bash
 ollama serve
 ollama pull qwen3:1.7b
 ```
 
-The app selects whichever generation model you have installed.
+When Ollama is selected, the app chooses an installed generation-capable model
+and reports any substitution in Diagnostics.
 
 ### Without the desktop shell
 

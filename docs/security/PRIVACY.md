@@ -15,19 +15,20 @@ There is no account, no API key, and no telemetry.
 | Vector storage | Chroma, on local disk |
 | Catalog, settings, traces | SQLite, on local disk |
 | Retrieval | In the application |
-| Answer generation | A local Ollama daemon, if installed |
+| Answer generation | Local GGUF runtime by default, or Ollama if selected |
 
 Because embeddings run in-process, importing and searching require no external
 software and no network access.
 
-## The one external component
+## Optional external component
 
-Generated prose answers use [Ollama](https://ollama.com), which the user installs
-separately and which listens on `http://127.0.0.1:11434` by default. Retrieved
-document excerpts and the question are sent to that endpoint so it can write an
-answer.
+Generated prose answers use a local GGUF model by default, launched through the
+bundled llama.cpp runtime on loopback. Retrieved document excerpts and the
+question stay on the machine.
 
-Ollama is optional. Without it the application still imports, searches, and
+Ollama is optional. If selected in Settings, retrieved document excerpts and the
+question are sent to the configured Ollama endpoint so it can write an answer.
+Without any generation model, the application still imports, searches, and
 returns cited passages.
 
 **If you change the Ollama endpoint to a remote address, document excerpts and

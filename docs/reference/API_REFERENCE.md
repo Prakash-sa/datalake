@@ -41,7 +41,7 @@ Failures carry a machine-readable code rather than an arbitrary message.
 | `document_not_found` | No such document | 404 |
 | `parse_failed` | The file could not be parsed | 422 |
 | `no_extractable_text` | Parsed, but contained no text | 422 |
-| `model_unavailable` | Ollama unreachable, or the model is not installed | 503 |
+| `model_unavailable` | Local model missing/unloadable, Ollama unreachable, or no generation model installed | 503 |
 | `embedding_failed` | The document could not be embedded | 502 |
 | `generation_failed` | The model failed to produce an answer | 502 |
 | `generation_timeout` | Generation exceeded its deadline | 504 |
@@ -52,8 +52,8 @@ Failures carry a machine-readable code rather than an arbitrary message.
 | `cancelled` | The caller abandoned the request | 499 |
 
 Errors also carry `actionable`, indicating whether the user can resolve the
-problem themselves — by starting Ollama, pulling a model, or rebuilding the
-index — rather than by retrying unchanged.
+problem themselves — by selecting a valid local model, starting Ollama, pulling
+a model, or rebuilding the index — rather than by retrying unchanged.
 
 ---
 
@@ -290,9 +290,11 @@ history; use `/chat/stream` for conversations.
 ```
 
 `status` is `degraded` with a `code` when generation was unavailable; the
-response still carries retrieved, cited context. `truncated_document_count`
-reports documents dropped to fit the context budget. `invalid_indices` lists
-citations pointing outside the supplied sources.
+response still carries retrieved, cited context. `metrics` reports retrieval
+time, generation time, first-token time, approximate tokens/sec, answer mode,
+and context document counts. `truncated_document_count` reports documents
+dropped to fit the context budget. `invalid_indices` lists citations pointing
+outside the supplied sources.
 
 ### `POST /query/stream`
 
@@ -301,9 +303,9 @@ UI can render citations while the answer streams. Disconnecting cancels
 generation.
 
 ```
-data: {"event":"sources","documents":[…],"truncated_document_count":0}
-data: {"event":"token","text":"Rankings "}
-data: {"event":"done","status":"success","answer":"…","citations":{…}}
+data: {"event":"sources","documents":[…],"truncated_document_count":0,"metrics":{…}}
+data: {"event":"token","text":"Rankings ","first_token_time_seconds":0.8}
+data: {"event":"done","status":"success","answer":"…","citations":{…},"metrics":{…}}
 data: {"event":"error","code":"model_unavailable","actionable":true}
 ```
 
