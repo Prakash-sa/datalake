@@ -28,6 +28,7 @@ compression: maximum
 
 mac:
   category: public.app-category.developer-tools
+  identity: null
   hardenedRuntime: true
   gatekeeperAssess: false
   target:
@@ -44,6 +45,4 @@ linux:
     - AppImage
     - deb
 
-publish:
-  provider: github
-  releaseType: draft
+publish: null

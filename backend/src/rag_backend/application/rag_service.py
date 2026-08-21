@@ -145,9 +145,7 @@ class DocumentRAGService:
         self.context_token_budget = context_token_budget
         self.generation_provider_name = generation_provider
         self.local_llm_model_path = local_llm_model_path or str(
-            Path(__file__).resolve().parents[1]
-            / "models"
-            / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            Path(__file__).resolve().parents[1] / "models" / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
         )
         self.local_llm_gpu_layers = local_llm_gpu_layers
         self.local_llm_max_tokens = local_llm_max_tokens
@@ -221,9 +219,7 @@ class DocumentRAGService:
     @classmethod
     def answer_profile(cls, answer_mode: str) -> dict[str, int]:
         """Return retrieval and generation limits for a speed/depth mode."""
-        return cls.ANSWER_MODE_PROFILES.get(
-            answer_mode, cls.ANSWER_MODE_PROFILES["balanced"]
-        )
+        return cls.ANSWER_MODE_PROFILES.get(answer_mode, cls.ANSWER_MODE_PROFILES["balanced"])
 
     def _resolve_generation_model(self, configured: str) -> str:
         """Pick a generation model from what Ollama actually has installed.
@@ -278,18 +274,10 @@ class DocumentRAGService:
         stored = self.catalog.get_setting("runtime", {})
         return {
             "ollama_url": stored.get("ollama_url", self.ollama_url),
-            "generation_provider": stored.get(
-                "generation_provider", self.generation_provider_name
-            ),
-            "local_llm_model_path": stored.get(
-                "local_llm_model_path", self.local_llm_model_path
-            ),
-            "local_llm_gpu_layers": stored.get(
-                "local_llm_gpu_layers", self.local_llm_gpu_layers
-            ),
-            "local_llm_max_tokens": stored.get(
-                "local_llm_max_tokens", self.local_llm_max_tokens
-            ),
+            "generation_provider": stored.get("generation_provider", self.generation_provider_name),
+            "local_llm_model_path": stored.get("local_llm_model_path", self.local_llm_model_path),
+            "local_llm_gpu_layers": stored.get("local_llm_gpu_layers", self.local_llm_gpu_layers),
+            "local_llm_max_tokens": stored.get("local_llm_max_tokens", self.local_llm_max_tokens),
             "embedding_model": stored.get("embedding_model", self.embedding_model),
             "llm_model": stored.get("llm_model", self.llm_model),
             "temperature": stored.get("temperature", self.temperature),

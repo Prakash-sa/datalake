@@ -142,11 +142,7 @@ class Settings(BaseSettings):
         """Where the bundled GGUF generation model lives by default."""
         if self.local_llm_model_path:
             return self.local_llm_model_path
-        return str(
-            Path(__file__).resolve().parent
-            / "models"
-            / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-        )
+        return str(Path(__file__).resolve().parent / "models" / "qwen2.5-1.5b-instruct-q4_k_m.gguf")
 
     @computed_field  # type: ignore[prop-decorator]
     @property

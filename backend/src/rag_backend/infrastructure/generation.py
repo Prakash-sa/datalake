@@ -665,9 +665,7 @@ class LlamaCppGenerationProvider:
         tokens = max_tokens or self.max_tokens
         ctx = context_window or self.context_window
         if self._llama_server is not None and context_window is None:
-            return self._generate_via_server(
-                prompt, temperature, max_tokens=max_tokens, stop=stop
-            )
+            return self._generate_via_server(prompt, temperature, max_tokens=max_tokens, stop=stop)
         if self._llama_cli is not None:
             return self._run_llama_cli(
                 prompt,

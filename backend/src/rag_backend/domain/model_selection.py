@@ -38,9 +38,7 @@ def is_embedding_model(name: str) -> bool:
     return any(hint in lowered for hint in EMBEDDING_HINTS)
 
 
-def generation_candidates(
-    installed: list[str], sizes: dict[str, int] | None = None
-) -> list[str]:
+def generation_candidates(installed: list[str], sizes: dict[str, int] | None = None) -> list[str]:
     """Installed models that can generate text, best first.
 
     When sizes are known, smaller models are preferred. A model larger than the

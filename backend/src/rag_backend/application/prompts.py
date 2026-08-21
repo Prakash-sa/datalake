@@ -53,8 +53,7 @@ GENERATION_STOP_SEQUENCES = ["\nUser:", "\nAssistant:", "<|im_end|>", "<|endofte
 
 ANSWER_MODE_INSTRUCTIONS = {
     "fast": (
-        "Answer in 1-3 short sentences. Use only the strongest evidence and keep "
-        "citations tight."
+        "Answer in 1-3 short sentences. Use only the strongest evidence and keep citations tight."
     ),
     "balanced": (
         "Answer concisely with enough detail to be useful. Cite each factual claim "
@@ -144,9 +143,7 @@ Assistant:"""
 
 def answer_mode_instruction(answer_mode: str) -> str:
     """Return extra writing guidance for the selected speed/depth mode."""
-    return ANSWER_MODE_INSTRUCTIONS.get(
-        answer_mode, ANSWER_MODE_INSTRUCTIONS["balanced"]
-    )
+    return ANSWER_MODE_INSTRUCTIONS.get(answer_mode, ANSWER_MODE_INSTRUCTIONS["balanced"])
 
 
 def clean_generated_answer(text: str) -> str:
