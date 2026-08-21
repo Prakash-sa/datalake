@@ -32,13 +32,14 @@ exports.default = async function applyFuses(context) {
   const { appOutDir, packager, electronPlatformName } = context;
   const appName = packager.appInfo.productFilename;
 
-  const executable = {
-    darwin: path.join(appOutDir, `${appName}.app`),
-    win32: path.join(appOutDir, `${appName}.exe`),
-    linux: path.join(appOutDir, packager.executableName),
-  }[electronPlatformName];
-
-  if (!executable) {
+  let executable;
+  if (electronPlatformName === 'darwin') {
+    executable = path.join(appOutDir, `${appName}.app`, 'Contents', 'MacOS', appName);
+  } else if (electronPlatformName === 'win32') {
+    executable = path.join(appOutDir, `${appName}.exe`);
+  } else if (electronPlatformName === 'linux') {
+    executable = path.join(appOutDir, packager.executableName || appName);
+  } else {
     console.warn(`[fuses] Unsupported platform ${electronPlatformName}; skipping.`);
     return;
   }
