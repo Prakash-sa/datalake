@@ -34,20 +34,20 @@ This builds the static UI, generates the CSP hashes for its inline scripts,
 packages the sidecar with PyInstaller, and produces platform artifacts through
 electron-builder.
 
-Build each platform on its own runner. macOS signing only works on macOS, and
-the sidecar contains architecture-specific binaries, so cross-building is not
-reliable. `.github/workflows/desktop-release.yml` runs the matrix.
+Build each platform on its own runner. The sidecar contains
+architecture-specific binaries, so cross-building is not reliable.
+`.github/workflows/desktop-release.yml` runs the matrix.
 
-> **Before distributing builds**, provide the release-only model and signing
-> secrets, then review [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md). The
-> workflow intentionally fails when the bundled GGUF model checksum, code-signing
-> certificate, or macOS notarization credentials are missing. See
-> [Releasing](#releasing).
+> **Before distributing builds**, provide the release-only GGUF model URL and
+> checksum, then review [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md). Code
+> signing is optional for early GitHub Releases, but unsigned builds must be
+> labelled as tester builds. See [Releasing](#releasing).
 
 ### Releasing
 
-There is still no public binary release until the external release inputs are
-present in GitHub Actions secrets and a clean matrix build has passed.
+GitHub Releases can host unsigned artifacts. The workflow attaches downloadable
+macOS, Windows, and Linux builds to `rag-desktop-vMAJOR.MINOR.PATCH` tags after
+the native matrix passes.
 
 **Gates.** Backend tests, frontend typecheck and export, eval fixtures, and an
 Electron build on each native runner must pass, with SBOM and SHA-256 checksums
@@ -55,16 +55,22 @@ generated and dependency and model licences reviewed. The release workflow also
 requires `LOCAL_LLM_GGUF_URL` and `LOCAL_LLM_GGUF_SHA256` so the bundled local
 generation model is reproducible and license-reviewed.
 
+**Unsigned early releases.** Allowed for friends, testers, developers, portfolio
+downloads, and open-source previews. macOS Gatekeeper may require System Settings
+-> Privacy & Security -> Open Anyway. Windows SmartScreen may require More info
+-> Run anyway. Release notes must say this plainly.
+
 **macOS.** Build on macOS. Sign with a Developer ID Application certificate,
 enable Hardened Runtime, notarize through App Store Connect, and staple the
-ticket. The workflow expects `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
-`APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. Validate with `codesign`, `spctl`,
-and an install on a clean machine.
+ticket when moving beyond tester releases. The workflow uses `CSC_LINK`,
+`CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`
+when present. Validate signed builds with `codesign`, `spctl`, and an install on
+a clean machine.
 
 **Windows.** Build on Windows. Sign the NSIS installer and the shipped
 executables, including the Python sidecar where practical. Timestamp every
 signature and keep the publisher identity stable across releases. The workflow
-expects `CSC_LINK` and `CSC_KEY_PASSWORD`.
+uses `CSC_LINK` and `CSC_KEY_PASSWORD` when present.
 
 **Linux.** Build AppImage and DEB on the oldest supported Ubuntu baseline and
 publish SHA-256 checksums. Electron's auto-updater does not cover Linux, so ship

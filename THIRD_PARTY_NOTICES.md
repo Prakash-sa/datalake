@@ -87,3 +87,5 @@ model by default.
 - [ ] Confirm the bundled model checksum still matches
 - [ ] Record the bundled GGUF generation model source, digest, and licence
 - [ ] Attach the generated SBOM to the release
+- [ ] If publishing unsigned tester builds, include macOS Gatekeeper and Windows
+      SmartScreen bypass notes in the release description
