@@ -2,7 +2,12 @@
   "name": "rag-query-frontend",
   "version": "0.1.0",
   "description": "Production desktop and web UI for the Document RAG Engine",
+  "author": "Prakash Saini",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Prakash-sa/local-rag.git"
+  },
   "main": "electron/main.js",
   "engines": {
     "node": ">=22.12.0",
@@ -16,7 +21,7 @@
     "electron": "electron .",
     "electron:dev": "node scripts/electron-dev.js",
     "backend:dist": "node scripts/package-backend.js",
-    "dist:electron": "electron-builder",
+    "dist:electron": "electron-builder --publish never",
     "dist": "npm run build && npm run backend:dist && npm run dist:electron",
     "test": "vitest run",
     "test:watch": "vitest",
