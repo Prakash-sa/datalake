@@ -16,6 +16,8 @@ function diagnostics(overrides: Record<string, unknown> = {}) {
     disk: { total_bytes: 100 * GB, used_bytes: 50 * GB, free_bytes: 50 * GB },
     models: {
       ollama_url: 'http://127.0.0.1:11434',
+      generation_provider: 'local',
+      local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
       embedding_model: 'qwen3-embedding:0.6b',
       llm_model: 'qwen3:4b',
     },
@@ -41,6 +43,7 @@ function mockBackend({
   diag = diagnostics(),
   modelsOk = true,
   missing = [] as string[],
+  generationProvider = 'local' as 'local' | 'ollama',
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -58,6 +61,13 @@ function mockBackend({
                 model: 'all-MiniLM-L6-v2',
                 dimensions: 384,
                 requires_external_software: false,
+              },
+              generation: {
+                status: modelsOk && !missing.length ? 'ready' : 'degraded',
+                provider: generationProvider,
+                model: 'qwen3:4b',
+                requires_ollama: generationProvider === 'ollama',
+                error: generationProvider === 'local' && missing.length ? 'local model file missing' : undefined,
               },
               ollama: { status: modelsOk ? 'ready' : 'error' },
             },
@@ -124,14 +134,38 @@ describe('DiagnosticsView', () => {
   });
 
   it('reports missing models', async () => {
-    mockBackend({ missing: ['qwen3:4b'] });
+    mockBackend({
+      missing: ['qwen3:4b'],
+      generationProvider: 'ollama',
+      diag: diagnostics({
+        models: {
+          ollama_url: 'http://127.0.0.1:11434',
+          generation_provider: 'ollama',
+          local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+          embedding_model: 'qwen3-embedding:0.6b',
+          llm_model: 'qwen3:4b',
+        },
+      }),
+    });
     render(<DiagnosticsView apiUrl="http://api" />);
 
     expect(await screen.findByText(/Missing: qwen3:4b/)).toBeTruthy();
   });
 
   it('reports an unreachable Ollama without implying search is broken', async () => {
-    mockBackend({ modelsOk: false });
+    mockBackend({
+      modelsOk: false,
+      generationProvider: 'ollama',
+      diag: diagnostics({
+        models: {
+          ollama_url: 'http://127.0.0.1:11434',
+          generation_provider: 'ollama',
+          local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
+          embedding_model: 'qwen3-embedding:0.6b',
+          llm_model: 'qwen3:4b',
+        },
+      }),
+    });
     render(<DiagnosticsView apiUrl="http://api" />);
 
     expect(await screen.findByText(/Search still works; written answers do not/i)).toBeTruthy();

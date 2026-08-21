@@ -38,22 +38,42 @@ def is_embedding_model(name: str) -> bool:
     return any(hint in lowered for hint in EMBEDDING_HINTS)
 
 
-def generation_candidates(installed: list[str]) -> list[str]:
-    """Installed models that can generate text, best first."""
-    usable = [name for name in installed if not is_embedding_model(name)]
+def generation_candidates(
+    installed: list[str], sizes: dict[str, int] | None = None
+) -> list[str]:
+    """Installed models that can generate text, best first.
 
-    def rank(name: str) -> tuple[int, str]:
+    When sizes are known, smaller models are preferred. A model larger than the
+    machine's memory swaps constantly and can take minutes per answer, so the
+    safe default is the one that will actually run; the user can choose a larger
+    one in settings.
+    """
+    usable = [name for name in installed if not is_embedding_model(name)]
+    sizes = sizes or {}
+
+    def rank(name: str) -> tuple[int, int, str]:
         family = family_of(name).lower()
-        for index, preferred in enumerate(PREFERRED_FAMILIES):
-            if family.startswith(preferred):
-                return (index, name)
-        # Unlisted families sort after known ones but remain selectable.
-        return (len(PREFERRED_FAMILIES), name)
+        family_rank = next(
+            (
+                index
+                for index, preferred in enumerate(PREFERRED_FAMILIES)
+                if family.startswith(preferred)
+            ),
+            # Unlisted families sort after known ones but remain selectable.
+            len(PREFERRED_FAMILIES),
+        )
+        # Unknown size sorts last, so a model of known modest size is preferred
+        # over one whose footprint cannot be checked.
+        return (family_rank, sizes.get(name) or 1 << 62, name)
 
     return sorted(usable, key=rank)
 
 
-def select_generation_model(installed: list[str], preferred: str | None) -> tuple[str | None, str]:
+def select_generation_model(
+    installed: list[str],
+    preferred: str | None,
+    sizes: dict[str, int] | None = None,
+) -> tuple[str | None, str]:
     """Pick a generation model and explain the choice.
 
     Returns the chosen tag, or None when nothing usable is installed, together
@@ -66,11 +86,11 @@ def select_generation_model(installed: list[str], preferred: str | None) -> tupl
     # readiness treats required models.
     if preferred:
         family = family_of(preferred)
-        for name in generation_candidates(installed):
+        for name in generation_candidates(installed, sizes):
             if family_of(name) == family:
                 return name, "configured-family"
 
-    candidates = generation_candidates(installed)
+    candidates = generation_candidates(installed, sizes)
     if not candidates:
         return None, "none-installed"
 

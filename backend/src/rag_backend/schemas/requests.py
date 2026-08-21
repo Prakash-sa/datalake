@@ -64,6 +64,8 @@ class SettingsUpdateRequest(BaseModel):
     """Runtime settings persisted locally."""
 
     ollama_url: str | None = Field(None, min_length=1, max_length=500)
+    generation_provider: str | None = Field(None, pattern="^(local|ollama)$")
+    local_llm_model_path: str | None = Field(None, min_length=1, max_length=4096)
     embedding_model: str | None = Field(None, min_length=1, max_length=200)
     llm_model: str | None = Field(None, min_length=1, max_length=200)
     temperature: float | None = Field(None, ge=0.0, le=1.0)

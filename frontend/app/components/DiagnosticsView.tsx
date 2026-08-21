@@ -89,7 +89,7 @@ export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
     ? Math.round((data.disk.used_bytes / data.disk.total_bytes) * 100)
     : 0;
   const lowDisk = data.disk.free_bytes < LOW_DISK_BYTES;
-  const ollamaReady = models !== null && models.missing_models.length === 0;
+  const generation = readiness?.capabilities?.generation ?? null;
   const embeddings = readiness?.capabilities?.embeddings ?? null;
 
   return (
@@ -137,20 +137,34 @@ export default function DiagnosticsView({ apiUrl }: { apiUrl: string }) {
         <Card
           title={
             <>
-              <StatusDot ok={ollamaReady} warn={!ollamaReady} />
-              Ollama <span className="text-xs font-normal text-zinc-500">generation only</span>
+              <StatusDot ok={generation?.status === 'ready'} warn={generation?.status !== 'ready'} />
+              Generation
+              <span className="text-xs font-normal text-zinc-500">
+                {data.models.generation_provider}
+              </span>
             </>
           }
         >
-          <Row label="Endpoint" value={data.models.ollama_url} />
+          <Row label="Provider" value={data.models.generation_provider} />
           <Row label="Generation model" value={data.models.llm_model} />
+          {data.models.generation_provider === 'local' && (
+            <Row label="Model file" value={data.models.local_llm_model_path} />
+          )}
+          {data.models.generation_provider === 'ollama' && (
+            <Row label="Endpoint" value={data.models.ollama_url} />
+          )}
           <Row label="Embedding model" value={data.models.embedding_model} />
-          {models && models.missing_models.length > 0 && (
+          {data.models.generation_provider === 'local' && generation?.error && (
+            <p className="mt-2 rounded-md border border-amber-900 bg-amber-950/40 p-2.5 text-xs text-amber-100">
+              {generation.error}
+            </p>
+          )}
+          {data.models.generation_provider === 'ollama' && models && models.missing_models.length > 0 && (
             <p className="mt-2 rounded-md border border-amber-900 bg-amber-950/40 p-2.5 text-xs text-amber-100">
               Missing: {models.missing_models.join(', ')}. Pull them from Settings.
             </p>
           )}
-          {models === null && (
+          {data.models.generation_provider === 'ollama' && models === null && (
             <p className="mt-2 rounded-md border border-amber-900 bg-amber-950/40 p-2.5 text-xs text-amber-100">
               Not reachable. Search still works; written answers do not.
             </p>

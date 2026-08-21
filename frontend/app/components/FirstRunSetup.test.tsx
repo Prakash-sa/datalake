@@ -13,6 +13,8 @@ function mockBackend({
   status = 'ready',
   missing = [] as string[],
   embeddingsStatus = 'ready',
+  generationProvider = 'local' as 'local' | 'ollama',
+  generationStatus = 'ready',
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -30,6 +32,12 @@ function mockBackend({
                 model: 'all-MiniLM-L6-v2',
                 dimensions: 384,
                 requires_external_software: false,
+              },
+              generation: {
+                status: generationStatus,
+                provider: generationProvider,
+                model: 'qwen3:1.7b',
+                requires_ollama: generationProvider === 'ollama',
               },
               ollama: { status: modelsOk && !missing.length ? 'ready' : 'error' },
             },
@@ -56,6 +64,8 @@ function mockBackend({
           status: 'success',
           settings: {
             ollama_url: 'http://127.0.0.1:11434',
+            generation_provider: generationProvider,
+            local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
             embedding_model: 'qwen3-embedding:0.6b',
             llm_model: 'qwen3:4b',
             temperature: 0.1,
@@ -79,19 +89,19 @@ afterEach(() => {
 });
 
 describe('FirstRunSetup', () => {
-  it('reports when Ollama is absent without framing it as a failure', async () => {
-    mockBackend({ modelsOk: false });
+  it('reports when the local generation model is missing', async () => {
+    mockBackend({ generationStatus: 'degraded' });
     renderSetup();
 
-    expect(await screen.findByText(/Search works without it/i)).toBeTruthy();
-    expect(screen.getByText(/ollama serve/)).toBeTruthy();
+    expect(await screen.findByText(/Local GGUF model file is missing/i)).toBeTruthy();
+    expect(screen.getByText(/qwen3-1.7b-q4_k_m.gguf/)).toBeTruthy();
   });
 
-  it('reports the endpoint once Ollama responds', async () => {
+  it('reports the active local generation model once ready', async () => {
     mockBackend();
     renderSetup();
 
-    expect(await screen.findByText(/Reachable at http:\/\/127\.0\.0\.1:11434/)).toBeTruthy();
+    expect(await screen.findByText(/Ready — qwen3:1.7b/)).toBeTruthy();
   });
 
   it('offers the configured model profiles', async () => {
@@ -103,7 +113,7 @@ describe('FirstRunSetup', () => {
   });
 
   it('lists missing models with a download control', async () => {
-    mockBackend({ missing: ['qwen3:4b'] });
+    mockBackend({ generationProvider: 'ollama', generationStatus: 'degraded', missing: ['qwen3:4b'] });
     renderSetup();
 
     // The model name also appears on the profile card, so target the
@@ -113,26 +123,27 @@ describe('FirstRunSetup', () => {
     expect(screen.getByText('Download')).toBeTruthy();
   });
 
-  it('allows continuing without Ollama, since search does not need it', async () => {
-    mockBackend({ modelsOk: false });
+  it('blocks continuing when local generation is missing', async () => {
+    mockBackend({ generationStatus: 'degraded' });
     renderSetup();
 
-    const button = await screen.findByRole('button', { name: /Start using the app/i });
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    const button = await screen.findByRole('button', { name: /Waiting for local models/i });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('explains what stays unavailable without Ollama', async () => {
-    mockBackend({ modelsOk: false });
+  it('explains what stays unavailable without a generation backend', async () => {
+    mockBackend({ generationStatus: 'degraded' });
     renderSetup();
 
     expect(await screen.findByText(/still import and search/i)).toBeTruthy();
   });
 
-  it('marks the Ollama step optional', async () => {
-    mockBackend({ modelsOk: false });
+  it('shows Ollama when that provider is selected', async () => {
+    mockBackend({ generationProvider: 'ollama', generationStatus: 'degraded', modelsOk: false });
     renderSetup();
 
-    expect(await screen.findByText('optional')).toBeTruthy();
+    expect(await screen.findByText('ollama')).toBeTruthy();
+    expect(screen.getByText(/ollama serve/)).toBeTruthy();
   });
 
   it('reports the bundled search engine as ready', async () => {
@@ -147,7 +158,7 @@ describe('FirstRunSetup', () => {
     mockBackend({ embeddingsStatus: 'error' });
     renderSetup();
 
-    const button = await screen.findByRole('button', { name: /Waiting for the search engine/i });
+    const button = await screen.findByRole('button', { name: /Waiting for local models/i });
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -157,11 +168,11 @@ describe('FirstRunSetup', () => {
 
     const button = await screen.findByRole('button', { name: /Start using the app/i });
     expect((button as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByText(/All required models are installed/i)).toBeTruthy();
+    expect(screen.getByText(/Ready — qwen3:1.7b/i)).toBeTruthy();
   });
 
   it('always offers a way to skip', async () => {
-    mockBackend({ missing: ['qwen3:4b'] });
+    mockBackend({ generationStatus: 'degraded' });
     renderSetup();
 
     expect(await screen.findByText('Skip for now')).toBeTruthy();

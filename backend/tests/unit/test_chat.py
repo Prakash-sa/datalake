@@ -16,25 +16,28 @@ class StubEmbeddings:
         return [float(len(content) % 5)] * 8
 
 
-class StubOllama:
-    """Generation surface only."""
+class StubGeneration:
+    """Generation provider surface only."""
+
+    name = "test"
+    model_name = "test-model"
 
     def __init__(self, tokens: list[str] | None = None):
         self.tokens = tokens or ["Merged ", "with ", "RRF ", "[S1]."]
         self.prompts: list[str] = []
 
-    def stream_generate(self, prompt, model, temperature=0.1, cancel=None, **kwargs):
+    def stream_generate(self, prompt, temperature=0.1, cancel=None, **kwargs):
         self.prompts.append(prompt)
         for token in self.tokens:
             if cancel is not None and cancel.is_set():
                 return
             yield token
 
-    def check_health(self):
-        return {"status": "ready", "installed_models": [], "missing_models": []}
+    def generate(self, prompt, temperature=0.1):
+        return "".join(self.stream_generate(prompt, temperature=temperature))
 
-    def model_digest(self, name):
-        return None
+    def health(self):
+        return {"status": "ready", "provider": self.name, "model": self.model_name}
 
 
 @pytest.fixture
@@ -43,7 +46,7 @@ def rag(tmp_path) -> DocumentRAGService:
         chroma_path=str(tmp_path / "chroma"), app_db_path=str(tmp_path / "app.db")
     )
     service.embeddings = StubEmbeddings()
-    service.ollama = StubOllama()
+    service.generation = StubGeneration()
     service.index_documents(
         [{"id": "chunk-1", "content": "rankings merged with fusion", "metadata": {}}]
     )
@@ -160,8 +163,8 @@ class TestTurns:
         first = _run(chat, "How are rankings merged?")[-1]
         _run(chat, "why is that?", conversation_id=first["conversation_id"])
 
-        assert "CONVERSATION SO FAR" in rag.ollama.prompts[-1]
-        assert "How are rankings merged?" in rag.ollama.prompts[-1]
+        assert "CONVERSATION SO FAR" in rag.generation.prompts[-1]
+        assert "How are rankings merged?" in rag.generation.prompts[-1]
 
     def test_the_question_survives_a_cancelled_turn(self, chat):
         import threading

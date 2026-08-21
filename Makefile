@@ -10,6 +10,9 @@ PY_VER   ?= 3.12
 # absolute path to the backend venv — a bare `python3` picks up whatever the shell
 # happens to have active.
 VENV_PY  := $(abspath $(BACKEND)/.venv/bin/python)
+NVM_NODE_BIN := $(shell ls -d $(HOME)/.nvm/versions/node/v*/bin 2>/dev/null | sort -V | tail -n 1)
+NODE_PATH_PREFIX := $(if $(NVM_NODE_BIN),$(NVM_NODE_BIN):)
+NPM := PATH="$(NODE_PATH_PREFIX)$(PATH)" npm
 
 .DEFAULT_GOAL := help
 
@@ -34,7 +37,7 @@ fetch-model: ## Download the bundled local embedding model
 
 .PHONY: setup-frontend
 setup-frontend: ## Install frontend dependencies
-	npm --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) install
 
 # --- Quality -----------------------------------------------------------------
 
@@ -45,7 +48,7 @@ check: lint typecheck test ## Run every check (what CI runs)
 lint: ## Lint and format-check the backend, type-check the frontend
 	cd $(BACKEND) && .venv/bin/ruff check src tests
 	cd $(BACKEND) && .venv/bin/ruff format --check src tests
-	npm --prefix $(FRONTEND) run lint
+	$(NPM) --prefix $(FRONTEND) run lint
 
 .PHONY: format
 format: ## Auto-format and auto-fix the backend
@@ -75,17 +78,17 @@ backend-run: ## Run the backend API locally
 
 .PHONY: frontend-run
 frontend-run: ## Run the Next.js dev server
-	npm --prefix $(FRONTEND) run dev
+	$(NPM) --prefix $(FRONTEND) run dev
 
 .PHONY: desktop
 desktop: ## Run the Electron desktop shell against a dev server
-	PYTHON="$(VENV_PY)" npm --prefix $(FRONTEND) run electron:dev
+	PYTHON="$(VENV_PY)" $(NPM) --prefix $(FRONTEND) run electron:dev
 
 .PHONY: dist
 dist: ## Build the packaged desktop application
 	# package-backend.js otherwise falls back to a bare python3, which may be the
 	# wrong version and will not have the backend dependencies installed.
-	PYTHON="$(VENV_PY)" npm --prefix $(FRONTEND) run dist
+	PYTHON="$(VENV_PY)" $(NPM) --prefix $(FRONTEND) run dist
 
 # --- Ingestion pipeline ------------------------------------------------------
 # Docker is only used for the optional Airflow pipeline; the desktop app runs a

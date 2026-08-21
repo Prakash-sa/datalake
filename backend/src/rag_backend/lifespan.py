@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app_db_path=settings.resolved_app_db_path,
             embedding_provider=settings.embedding_provider,
             local_embedding_model_dir=settings.resolved_local_embedding_model_dir,
+            generation_provider=settings.generation_provider,
+            local_llm_model_path=settings.resolved_local_llm_model_path,
         )
         app.state.rag_service = rag_service
         app.state.eval_service = EvalService(rag_service)
@@ -67,6 +69,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         job_service = app.state.job_service
         if job_service is not None:
             job_service.shutdown()
+        rag_service = app.state.rag_service
+        if rag_service is not None:
+            rag_service.shutdown()
         app.state.rag_service = None
         app.state.eval_service = None
         app.state.job_service = None

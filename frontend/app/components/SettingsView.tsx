@@ -16,6 +16,8 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
 
   // Draft values, so editing does not mutate saved state until submit.
   const [ollamaUrl, setOllamaUrl] = useState('');
+  const [generationProvider, setGenerationProvider] = useState<'local' | 'ollama'>('local');
+  const [localLlmModelPath, setLocalLlmModelPath] = useState('');
   const [embeddingModel, setEmbeddingModel] = useState('');
   const [llmModel, setLlmModel] = useState('');
   const [temperature, setTemperature] = useState(0.1);
@@ -23,6 +25,8 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
   const applySettings = (next: RuntimeSettings) => {
     setSettings(next);
     setOllamaUrl(next.ollama_url);
+    setGenerationProvider(next.generation_provider);
+    setLocalLlmModelPath(next.local_llm_model_path);
     setEmbeddingModel(next.embedding_model);
     setLlmModel(next.llm_model);
     setTemperature(next.temperature);
@@ -57,6 +61,8 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
 
     const response = await apiRequest<SettingsResponse>('/settings', apiUrl, 'POST', {
       ollama_url: ollamaUrl,
+      generation_provider: generationProvider,
+      local_llm_model_path: localLlmModelPath,
       embedding_model: embeddingModel,
       llm_model: llmModel,
       temperature,
@@ -191,11 +197,32 @@ export default function SettingsView({ apiUrl }: { apiUrl: string }) {
       <form onSubmit={save} className="rounded-md border border-zinc-800 bg-zinc-900 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm sm:col-span-2">
+            <span className="font-medium text-zinc-200">Generation provider</span>
+            <select
+              value={generationProvider}
+              onChange={(e) => setGenerationProvider(e.target.value as 'local' | 'ollama')}
+              className={field}
+            >
+              <option value="local">Local GGUF (no Ollama)</option>
+              <option value="ollama">Ollama daemon</option>
+            </select>
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            <span className="font-medium text-zinc-200">Local GGUF model path</span>
+            <input
+              value={localLlmModelPath}
+              onChange={(e) => setLocalLlmModelPath(e.target.value)}
+              className={field}
+              disabled={generationProvider !== 'local'}
+            />
+          </label>
+          <label className="block text-sm sm:col-span-2">
             <span className="font-medium text-zinc-200">Ollama URL</span>
             <input
               value={ollamaUrl}
               onChange={(e) => setOllamaUrl(e.target.value)}
               className={field}
+              disabled={generationProvider !== 'ollama'}
               placeholder="http://127.0.0.1:11434"
             />
           </label>

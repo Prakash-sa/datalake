@@ -116,7 +116,80 @@ export default function LibraryView({
       )}
 
       {documents.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-zinc-800 bg-zinc-900">
+        <div className="grid gap-3 md:hidden">
+          {documents.map((doc) => {
+            const size = Number(doc.metadata?.source_size_bytes ?? 0);
+            return (
+              <article key={doc.id} className="rounded-md border border-zinc-800 bg-zinc-900 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-zinc-100" title={doc.title}>
+                      {doc.title}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-zinc-500" title={doc.source_path}>
+                      {doc.source_path}
+                    </p>
+                  </div>
+                  <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                    {contentTypeLabel(doc.content_type)}
+                  </span>
+                </div>
+
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <dt className="text-zinc-500">Size</dt>
+                    <dd className="mt-0.5 text-zinc-300">{size ? formatBytes(size) : '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Chunks</dt>
+                    <dd className="mt-0.5 text-zinc-300">{doc.chunk_count}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Indexed</dt>
+                    <dd className="mt-0.5 text-zinc-300">{formatRelative(doc.indexed_at)}</dd>
+                  </div>
+                </dl>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <code className="min-w-0 truncate text-xs text-zinc-500">{doc.embedding_model}</code>
+                  {confirmId === doc.id ? (
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        disabled={busyId === doc.id}
+                        onClick={() => void remove(doc.id)}
+                        className="rounded-md border border-red-800 px-2.5 py-1 text-xs text-red-200 transition hover:bg-red-950 disabled:opacity-50"
+                      >
+                        {busyId === doc.id ? 'Deleting…' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmId(null)}
+                        className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-zinc-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmId(doc.id)}
+                      title="Delete document, chunks, and vectors"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-red-800 hover:text-red-200"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {documents.length > 0 && (
+        <div className="hidden overflow-x-auto rounded-md border border-zinc-800 bg-zinc-900 md:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <tr>

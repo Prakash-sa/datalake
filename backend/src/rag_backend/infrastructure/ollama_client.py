@@ -88,6 +88,13 @@ class OllamaClient:
                 for model in payload.get("models", [])
                 if model.get("name") or model.get("model")
             }
+            # Size decides whether a model will actually run on this machine,
+            # so it informs which one is selected when nothing is configured.
+            sizes = {
+                (model.get("name") or model.get("model")): int(model.get("size", 0) or 0)
+                for model in payload.get("models", [])
+                if model.get("name") or model.get("model")
+            }
             # Accept a bare family name as satisfying a tagged requirement.
             aliases = installed | {model.split(":", 1)[0] for model in installed}
             missing = [model for model in self.required_models if model not in aliases]
@@ -108,6 +115,7 @@ class OllamaClient:
                 "installed_models": sorted(installed),
                 "missing_models": missing,
                 "digests": digests,
+                "sizes": sizes,
             }
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
             signature = f"error:{e}"
@@ -121,6 +129,7 @@ class OllamaClient:
                 "installed_models": [],
                 "missing_models": self.required_models,
                 "digests": {},
+                "sizes": {},
                 "error": str(e),
             }
 

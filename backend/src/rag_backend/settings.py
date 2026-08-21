@@ -71,8 +71,12 @@ class Settings(BaseSettings):
     # RAG engine
     ollama_url: str = Field(default="http://127.0.0.1:11434", alias="OLLAMA_URL")
     embedding_model: str = Field(default="qwen3-embedding:0.6b", alias="EMBEDDING_MODEL")
-    llm_model: str = Field(default="qwen3:4b", alias="LLM_MODEL")
+    llm_model: str = Field(default="qwen2.5:1.5b-instruct", alias="LLM_MODEL")
     llm_temperature: float = Field(default=0.1, ge=0.0, le=1.0, alias="LLM_TEMPERATURE")
+    generation_provider: Literal["local", "ollama"] = Field(
+        default="local", alias="GENERATION_PROVIDER"
+    )
+    local_llm_model_path: str | None = Field(default=None, alias="LOCAL_LLM_MODEL_PATH")
 
     # Embeddings. "local" runs in-process via ONNX and needs no external
     # software; "ollama" delegates to the daemon. Switching invalidates the
@@ -117,6 +121,18 @@ class Settings(BaseSettings):
         if self.local_embedding_model_dir:
             return self.local_embedding_model_dir
         return str(Path(__file__).resolve().parent / "models" / "all-MiniLM-L6-v2")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def resolved_local_llm_model_path(self) -> str:
+        """Where the bundled GGUF generation model lives by default."""
+        if self.local_llm_model_path:
+            return self.local_llm_model_path
+        return str(
+            Path(__file__).resolve().parent
+            / "models"
+            / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

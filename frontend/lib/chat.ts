@@ -130,7 +130,7 @@ export async function streamChat(
 export function explainChatError(code: string | null | undefined): string | null {
   switch (code) {
     case 'model_unavailable':
-      return 'No generation model is available. Install Ollama and pull a model to get written answers; search still works without one.';
+      return 'No generation model is available. Add a local GGUF model or switch to Ollama in Settings; search still works without written answers.';
     case 'generation_timeout':
       return 'The model took too long. A smaller model such as qwen3:1.7b responds much faster on CPU.';
     case 'no_relevant_evidence':

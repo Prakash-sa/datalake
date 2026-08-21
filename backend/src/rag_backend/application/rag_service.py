@@ -18,8 +18,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from langchain_ollama import OllamaLLM
-
 from rag_backend.application.citations import validate_citations
 from rag_backend.application.ingestion_service import (
     CHUNKER_VERSION,
@@ -51,6 +49,7 @@ from rag_backend.errors import (
 )
 from rag_backend.infrastructure.catalog_store import CatalogStore
 from rag_backend.infrastructure.embeddings import build_embedding_provider
+from rag_backend.infrastructure.generation import build_generation_provider
 from rag_backend.infrastructure.ollama_client import OllamaClient
 from rag_backend.infrastructure.vector_store import ChromaVectorStore, normalize_metadata
 
@@ -82,6 +81,8 @@ class DocumentRAGService:
         context_token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
         embedding_provider: str = "local",
         local_embedding_model_dir: str | None = None,
+        generation_provider: str = "local",
+        local_llm_model_path: str | None = None,
     ) -> None:
         if not 0.0 <= temperature <= 1.0:
             raise ValueError("Temperature must be between 0.0 and 1.0")
@@ -93,22 +94,36 @@ class DocumentRAGService:
         self.chroma_path = chroma_path
         self.app_db_path = app_db_path
         self.context_token_budget = context_token_budget
+        self.generation_provider_name = generation_provider
+        self.local_llm_model_path = local_llm_model_path or str(
+            Path(__file__).resolve().parents[1] / "models" / "qwen3-1.7b-q4_k_m.gguf"
+        )
 
         self.catalog = CatalogStore(app_db_path)
         self.embedding_provider_name = embedding_provider
         # Resolved against what is installed; see _resolve_generation_model.
         self.configured_llm_model = llm_model
         self.generation_selection_reason = "configured"
-        # Only the generation model is required from Ollama when embeddings run
-        # locally, so a missing embedding model must not be reported as missing.
-        required = [llm_model] if embedding_provider == "local" else [embedding_model, llm_model]
+        # Only providers that actually use Ollama should make readiness depend
+        # on the daemon.
+        required: list[str] = []
+        if embedding_provider == "ollama":
+            required.append(embedding_model)
+        if generation_provider == "ollama":
+            required.append(llm_model)
         self.ollama = OllamaClient(ollama_url, required)
-        self.llm_model = self._resolve_generation_model(llm_model)
+        self.llm_model = (
+            self._resolve_generation_model(llm_model)
+            if generation_provider == "ollama"
+            else llm_model
+        )
         # Readiness should check the model actually in use, not the one that was
         # configured but absent.
-        self.ollama.required_models = (
-            [self.llm_model] if embedding_provider == "local" else [embedding_model, self.llm_model]
-        )
+        self.ollama.required_models = []
+        if embedding_provider == "ollama":
+            self.ollama.required_models.append(embedding_model)
+        if generation_provider == "ollama":
+            self.ollama.required_models.append(self.llm_model)
         self.stats = {"documents_indexed": 0, "queries_processed": 0, "errors": 0}
 
         try:
@@ -120,9 +135,12 @@ class DocumentRAGService:
                 or str(Path(__file__).resolve().parents[1] / "models" / "all-MiniLM-L6-v2"),
                 ollama_client=self.ollama,
             )
-            # Must use the resolved model, not the configured one, or the
-            # selection above would have no effect.
-            self.llm = OllamaLLM(model=self.llm_model, base_url=ollama_url, temperature=temperature)
+            self.generation = build_generation_provider(
+                generation_provider,
+                ollama_client=self.ollama,
+                model=self.llm_model,
+                local_model_path=self.local_llm_model_path,
+            )
             self.vector_store = ChromaVectorStore(chroma_path)
         except Exception as e:
             logger.error("Failed to initialize RAG components: %s", e, exc_info=True)
@@ -132,11 +150,18 @@ class DocumentRAGService:
         # Report the provider actually in use; naming the configured Ollama
         # model when embeddings run locally is misleading during diagnosis.
         logger.info(
-            "RAG service ready (embeddings=%s/%s, generation=%s)",
+            "RAG service ready (embeddings=%s/%s, generation=%s/%s)",
             self.embedding_provider_name,
             getattr(self.embeddings, "model_name", embedding_model),
+            self.generation_provider_name,
             self.llm_model,
         )
+
+    def shutdown(self) -> None:
+        """Release provider resources owned by this service."""
+        close = getattr(self.generation, "close", None)
+        if callable(close):
+            close()
 
     def _resolve_generation_model(self, configured: str) -> str:
         """Pick a generation model from what Ollama actually has installed.
@@ -147,16 +172,18 @@ class DocumentRAGService:
         rather than hidden.
         """
         try:
-            installed = self.ollama.check_health().get("installed_models", [])
+            health = self.ollama.check_health()
+            installed = health.get("installed_models", [])
+            sizes = health.get("sizes", {})
         except Exception:  # pragma: no cover - health already degrades safely
-            installed = []
+            installed, sizes = [], {}
 
         if not installed:
             # Nothing to choose from; keep the configured name so readiness can
             # report it as missing.
             return configured
 
-        chosen, reason = select_generation_model(installed, configured)
+        chosen, reason = select_generation_model(installed, configured, sizes)
         self.generation_selection_reason = reason
 
         if chosen is None:
@@ -189,6 +216,12 @@ class DocumentRAGService:
         stored = self.catalog.get_setting("runtime", {})
         return {
             "ollama_url": stored.get("ollama_url", self.ollama_url),
+            "generation_provider": stored.get(
+                "generation_provider", self.generation_provider_name
+            ),
+            "local_llm_model_path": stored.get(
+                "local_llm_model_path", self.local_llm_model_path
+            ),
             "embedding_model": stored.get("embedding_model", self.embedding_model),
             "llm_model": stored.get("llm_model", self.llm_model),
             "temperature": stored.get("temperature", self.temperature),
@@ -198,7 +231,14 @@ class DocumentRAGService:
     def update_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
         """Persist runtime settings. Model changes apply on next backend restart."""
         current = self.get_settings()
-        for key in ("ollama_url", "embedding_model", "llm_model", "temperature"):
+        for key in (
+            "ollama_url",
+            "generation_provider",
+            "local_llm_model_path",
+            "embedding_model",
+            "llm_model",
+            "temperature",
+        ):
             if settings.get(key) is not None:
                 current[key] = settings[key]
         self.catalog.set_setting("runtime", current)
@@ -479,12 +519,17 @@ class DocumentRAGService:
 
             degraded_code: str | None = None
             try:
-                answer = self.llm.invoke(
-                    GROUNDED_ANSWER_TEMPLATE.format(context=context, query=user_query)
+                answer = self.generation.generate(
+                    GROUNDED_ANSWER_TEMPLATE.format(context=context, query=user_query),
+                    temperature=self.temperature,
                 )
-            except Exception as llm_error:
+            except RagError as llm_error:
                 # Degrade to context-only so retrieval stays usable without a
                 # loaded generation model.
+                degraded_code = str(llm_error.code)
+                logger.warning("Generation unavailable (%s): %s", degraded_code, llm_error)
+                answer = f"Based on {len(context_docs)} relevant document(s):\n\n{context}"
+            except Exception as llm_error:
                 degraded_code = str(classify_ollama_exception(llm_error))
                 logger.warning("Generation unavailable (%s): %s", degraded_code, llm_error)
                 answer = f"Based on {len(context_docs)} relevant document(s):\n\n{context}"
@@ -601,9 +646,8 @@ class DocumentRAGService:
 
         parts: list[str] = []
         try:
-            for token in self.ollama.stream_generate(
+            for token in self.generation.stream_generate(
                 prompt,
-                model=self.llm_model,
                 temperature=self.temperature,
                 cancel=cancel,
             ):
@@ -785,8 +829,10 @@ class DocumentRAGService:
             },
             "models": {
                 "ollama_url": self.ollama_url,
+                "generation_provider": self.generation_provider_name,
                 "embedding_model": self.embedding_model,
                 "llm_model": self.llm_model,
+                "local_llm_model_path": self.local_llm_model_path,
             },
             "storage": self.vector_store.check_storage(),
             "stats": self.get_stats(),
@@ -796,8 +842,24 @@ class DocumentRAGService:
         """Report production operating capabilities."""
         stats = self.get_stats()
         memory = self.vector_store.check_storage()
-        ollama = self.ollama.check_health()
-        ready = memory["status"] == "ready" and ollama["status"] == "ready"
+        uses_ollama = (
+            self.embedding_provider_name == "ollama" or self.generation_provider_name == "ollama"
+        )
+        ollama = (
+            self.ollama.check_health()
+            if uses_ollama
+            else {
+                "status": "unused",
+                "url": self.ollama_url,
+                "required_models": [],
+                "installed_models": [],
+                "missing_models": [],
+            }
+        )
+        generation = self.generation.health()
+        ready = memory["status"] == "ready" and generation["status"] == "ready"
+        if uses_ollama:
+            ready = ready and ollama["status"] == "ready"
 
         return {
             "status": "ready" if ready else "degraded",
@@ -819,13 +881,11 @@ class DocumentRAGService:
                 },
                 "ollama": ollama,
                 "generation": {
-                    "status": "ready"
-                    if self.llm_model in ollama.get("installed_models", [])
-                    else "degraded",
+                    **generation,
                     "model": self.llm_model,
                     "configured_model": self.configured_llm_model,
                     "selection": self.generation_selection_reason,
-                    "installed_models": ollama.get("installed_models", []),
+                    "requires_ollama": self.generation_provider_name == "ollama",
                 },
                 "embeddings": self.embeddings.health(),
                 "index": self.check_index_compatibility(),

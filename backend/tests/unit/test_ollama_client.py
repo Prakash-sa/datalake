@@ -205,6 +205,36 @@ def test_cache_can_be_bypassed(monkeypatch, client):
     assert calls["n"] == 2
 
 
+def test_health_includes_model_sizes_from_tags(monkeypatch):
+    payload = {
+        "models": [
+            {
+                "name": "qwen3:1.7b",
+                "digest": "small-digest",
+                "size": 1_400_000_000,
+            },
+            {
+                "model": "qwen3.5:latest",
+                "digest": "large-digest",
+                "size": 6_600_000_000,
+            },
+        ]
+    }
+    client = OllamaClient("http://127.0.0.1:11434", ["qwen3"])
+
+    with _fake_urlopen(monkeypatch, [json.dumps(payload).encode()]):
+        health = client.check_health(use_cache=False)
+
+    assert health["sizes"] == {
+        "qwen3:1.7b": 1_400_000_000,
+        "qwen3.5:latest": 6_600_000_000,
+    }
+    assert health["digests"] == {
+        "qwen3:1.7b": "small-digest",
+        "qwen3.5:latest": "large-digest",
+    }
+
+
 def test_an_unchanged_failure_is_logged_once(monkeypatch, client, caplog):
     # A stopped daemon polled twice a second would otherwise bury the log.
     monkeypatch.setattr(

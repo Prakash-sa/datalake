@@ -9,12 +9,12 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev",
     "build": "next build --webpack && node scripts/generate-csp-hashes.js",
     "start": "next start",
     "lint": "next typegen && tsc --noEmit --incremental false",
     "electron": "electron .",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:dev": "node scripts/electron-dev.js",
     "backend:dist": "node scripts/package-backend.js",
     "dist:electron": "electron-builder",
     "dist": "npm run build && npm run backend:dist && npm run dist:electron",

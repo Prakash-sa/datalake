@@ -138,9 +138,8 @@ class ChatService:
 
         parts: list[str] = []
         try:
-            for token in self._rag.ollama.stream_generate(
+            for token in self._rag.generation.stream_generate(
                 prompt,
-                model=self._rag.llm_model,
                 temperature=self._rag.temperature,
                 cancel=cancel,
             ):

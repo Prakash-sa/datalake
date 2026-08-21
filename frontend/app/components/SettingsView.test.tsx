@@ -4,6 +4,8 @@ import SettingsView from '@/app/components/SettingsView';
 
 const SETTINGS = {
   ollama_url: 'http://127.0.0.1:11434',
+  generation_provider: 'local' as const,
+  local_llm_model_path: '/models/qwen3-1.7b-q4_k_m.gguf',
   embedding_model: 'qwen3-embedding:0.6b',
   llm_model: 'qwen3:4b',
   temperature: 0.1,

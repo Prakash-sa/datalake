@@ -43,6 +43,9 @@ dev = [
 ]
 # Only what PyInstaller needs to build the desktop sidecar.
 packaging = ["pyinstaller>=6.3.0"]
+# In-process local generation. Keep optional so indexing/search installs remain
+# small; desktop packaging can include this extra when bundling a GGUF model.
+local-generation = ["llama-cpp-python>=0.3.0"]
 
 [project.scripts]
 rag-backend = "rag_backend.__main__:main"

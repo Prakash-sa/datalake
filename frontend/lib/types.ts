@@ -2,6 +2,8 @@
 
 export type RuntimeSettings = {
   ollama_url: string;
+  generation_provider: 'local' | 'ollama';
+  local_llm_model_path: string;
   embedding_model: string;
   llm_model: string;
   temperature: number;
@@ -26,7 +28,13 @@ export type Diagnostics = {
   runtime: { python_version: string; platform: string };
   paths: { app_data_dir: string; app_db_path: string; chroma_path: string };
   disk: { total_bytes: number; used_bytes: number; free_bytes: number };
-  models: { ollama_url: string; embedding_model: string; llm_model: string };
+  models: {
+    ollama_url: string;
+    generation_provider: 'local' | 'ollama';
+    local_llm_model_path: string;
+    embedding_model: string;
+    llm_model: string;
+  };
   storage: {
     status: string;
     provider: string;
@@ -52,10 +60,20 @@ export type EmbeddingsCapability = {
   requires_external_software: boolean;
 };
 
+export type GenerationCapability = {
+  status: 'ready' | 'degraded' | 'error' | 'unknown';
+  provider: 'local' | 'ollama';
+  model: string;
+  model_path?: string;
+  requires_ollama?: boolean;
+  error?: string;
+};
+
 export type Readiness = {
   status: string;
   capabilities: {
     embeddings: EmbeddingsCapability;
+    generation: GenerationCapability;
     ollama: { status: string; missing_models?: string[]; url?: string };
     index?: { status: string; rebuild_required: boolean };
     memory?: { documents?: number; catalog_documents?: number };

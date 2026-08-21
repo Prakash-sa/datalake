@@ -41,25 +41,21 @@ const CAPABILITIES = [
   {
     name: 'Local',
     status: 'No cloud',
-    description: 'Parsing, embedding, indexing, and retrieval all run on this machine.',
     icon: Brain,
   },
   {
     name: 'Grounded',
     status: 'Cited',
-    description: 'Every answer cites the passages it used, validated against what was retrieved.',
     icon: GitFork,
   },
   {
     name: 'Hybrid search',
     status: 'Dense + FTS',
-    description: 'Vector similarity fused with lexical search so exact terms are not lost.',
     icon: Gauge,
   },
   {
     name: 'Observable',
     status: 'Instrumented',
-    description: 'Job progress, retrieval traces, and diagnostics for what the engine is doing.',
     icon: RefreshCw,
   },
 ];
@@ -99,7 +95,7 @@ export default function DocumentRAGInterface() {
         }
         setNeedsSetup(
           capabilities.embeddings?.status !== 'ready' ||
-            capabilities.ollama?.status !== 'ready',
+            capabilities.generation?.status !== 'ready',
         );
       })
       .catch(() => setNeedsSetup(true));
@@ -164,62 +160,75 @@ export default function DocumentRAGInterface() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <section className="border-b border-zinc-800 bg-zinc-950">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6 sm:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="mb-3 flex items-center gap-2 text-sm text-cyan-300">
-                <Sparkles className="h-4 w-4" />
-                <span>{isDesktop ? 'Desktop' : 'Web'} · everything runs locally</span>
+    <main className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+      <section className="shrink-0 border-b border-zinc-800 bg-zinc-950/95">
+        <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-cyan-900/70 bg-cyan-950/30 px-2 py-1 text-cyan-200">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {isDesktop ? 'Desktop' : 'Web'}
+                </span>
+                <span className="text-zinc-500">Everything runs locally</span>
               </div>
-              <h1 className="text-3xl font-semibold tracking-normal text-white sm:text-4xl">
+              <h1 className="truncate text-2xl font-semibold tracking-normal text-white sm:text-3xl">
                 Document RAG Engine
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
-                Ask questions about your own documents and get answers that cite the
-                passages they came from.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-400">
+                Ask grounded questions, manage your index, and inspect retrieval behavior from one
+                local workspace.
               </p>
             </div>
 
-            {isDesktop && (
-              <button
-                type="button"
-                onClick={handleImport}
-                disabled={importing}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-500"
-              >
-                {importing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-                Import documents
-              </button>
-            )}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center xl:justify-end">
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:min-w-[520px]">
+                {CAPABILITIES.map((item) => (
+                  <div
+                    key={item.name}
+                    className="flex min-h-16 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/70 px-3 py-2"
+                  >
+                    <item.icon className="h-4 w-4 flex-shrink-0 text-cyan-300" />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-white">{item.name}</div>
+                      <div className="truncate text-emerald-300">{item.status}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:min-w-[520px]">
-              {CAPABILITIES.map((item) => (
-                <div key={item.name} className="rounded-md border border-zinc-800 bg-zinc-900 p-3">
-                  <item.icon className="mb-3 h-5 w-5 text-cyan-300" />
-                  <div className="font-medium text-white">{item.name}</div>
-                  <div className="mt-1 text-xs text-emerald-300">{item.status}</div>
-                </div>
-              ))}
+              {isDesktop && (
+                <button
+                  type="button"
+                  onClick={handleImport}
+                  disabled={importing}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-cyan-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-500 lg:w-auto"
+                >
+                  {importing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  Import documents
+                </button>
+              )}
             </div>
           </div>
 
-          <nav className="flex gap-1 border-b border-zinc-800" aria-label="Views">
+          <nav
+            className="-mx-4 flex gap-1 overflow-x-auto border-t border-zinc-900 px-4 pt-3 sm:mx-0 sm:px-0"
+            aria-label="Views"
+          >
             {VIEWS.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setView(item.id)}
                 aria-current={view === item.id ? 'page' : undefined}
-                className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+                className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
                   view === item.id
-                    ? 'border-cyan-400 text-white'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                    ? 'bg-zinc-100 text-zinc-950'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'
                 }`}
               >
                 <item.icon className="h-4 w-4" />
@@ -230,7 +239,7 @@ export default function DocumentRAGInterface() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl space-y-4 px-5 py-6 sm:px-8">
+      <section className="mx-auto flex w-full max-w-[96rem] flex-1 flex-col space-y-4 px-4 py-4 sm:px-6 lg:min-h-0 lg:px-8">
         {error && (
           <div className="flex gap-3 rounded-md border border-red-800 bg-red-950/70 p-4">
             <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />

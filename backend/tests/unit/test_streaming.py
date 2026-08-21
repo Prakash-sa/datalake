@@ -15,15 +15,18 @@ class StubEmbeddings:
         return [float(len(content) % 5)] * 8
 
 
-class StubOllama:
-    """Stands in for OllamaClient's generation surface."""
+class StubGeneration:
+    """Stands in for the configured generation provider."""
+
+    name = "test"
+    model_name = "test-model"
 
     def __init__(self, tokens: list[str] | None = None, error: Exception | None = None):
         self.tokens = tokens or ["Answer ", "[S1]", "."]
         self.error = error
         self.seen_cancel: threading.Event | None = None
 
-    def stream_generate(self, prompt, model, temperature=0.1, cancel=None, **kwargs):
+    def stream_generate(self, prompt, temperature=0.1, cancel=None, **kwargs):
         self.seen_cancel = cancel
         if self.error:
             raise self.error
@@ -32,6 +35,12 @@ class StubOllama:
                 return
             yield token
 
+    def generate(self, prompt, temperature=0.1):
+        return "".join(self.stream_generate(prompt, temperature=temperature))
+
+    def health(self):
+        return {"status": "ready", "provider": self.name, "model": self.model_name}
+
 
 @pytest.fixture
 def service(tmp_path) -> DocumentRAGService:
@@ -39,7 +48,7 @@ def service(tmp_path) -> DocumentRAGService:
         chroma_path=str(tmp_path / "chroma"), app_db_path=str(tmp_path / "app.db")
     )
     svc.embeddings = StubEmbeddings()
-    svc.ollama = StubOllama()
+    svc.generation = StubGeneration()
     return svc
 
 
@@ -102,7 +111,7 @@ def test_invalid_query_yields_a_structured_validation_error(service):
 
 def test_model_unavailable_is_reported_as_a_structured_error(service):
     _index(service)
-    service.ollama = StubOllama(error=ModelUnavailableError("ollama is not running"))
+    service.generation = StubGeneration(error=ModelUnavailableError("model is not available"))
 
     events = _collect(service)
 
@@ -130,7 +139,7 @@ def test_cancel_event_is_passed_through_to_the_client(service):
 
     _collect(service, cancel=cancel)
 
-    assert service.ollama.seen_cancel is cancel
+    assert service.generation.seen_cancel is cancel
 
 
 def test_truncated_document_count_is_reported(service):
