@@ -36,7 +36,17 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Install backend dependencies
-        run: python -m pip install "../backend[packaging,local-generation]"
+        shell: bash
+        run: |
+          python -m pip install "../backend[packaging]"
+          if [ -n "${LOCAL_LLM_GGUF_URL:-}" ] && [ -n "${LOCAL_LLM_GGUF_SHA256:-}" ]; then
+            python -m pip install "../backend[local-generation]"
+          else
+            echo "::warning::No bundled GGUF secrets configured; skipping llama-cpp-python for this tester build."
+          fi
+        env:
+          LOCAL_LLM_GGUF_URL: ${{ secrets.LOCAL_LLM_GGUF_URL }}
+          LOCAL_LLM_GGUF_SHA256: ${{ secrets.LOCAL_LLM_GGUF_SHA256 }}
       - name: Fetch the bundled embedding model
         # Shipped in the installer so a fresh machine can index and search with
         # no external software present.
@@ -126,9 +136,8 @@ jobs:
           - Windows may show Unknown publisher / Windows protected your PC. Use
             More info -> Run anyway if you trust the build.
           - If this run did not include `LOCAL_LLM_GGUF_URL` and
-            `LOCAL_LLM_GGUF_SHA256`, written answers require adding a local GGUF
-            model in Settings or switching generation to Ollama. Import and
-            search still work.
+            `LOCAL_LLM_GGUF_SHA256`, written answers require switching
+            generation to Ollama in Settings. Import and search still work.
 
           Verify downloaded files with the attached `SHA256SUMS` files.
           EOF

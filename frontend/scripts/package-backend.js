@@ -42,11 +42,17 @@ if (!python) {
 
 const runtimeCheck = spawnSync(python, ['-c', 'import llama_cpp'], { encoding: 'utf8' });
 if (runtimeCheck.status !== 0) {
-  console.error(
-    'llama-cpp-python is required to package local GGUF generation. ' +
-      'Install backend extras with: python -m pip install "./backend[packaging,local-generation]"',
-  );
-  process.exit(1);
+  if (process.env.ALLOW_MISSING_LOCAL_LLM === '1') {
+    console.warn(
+      'llama-cpp-python is not installed. Continuing because ALLOW_MISSING_LOCAL_LLM=1; written answers require Ollama.',
+    );
+  } else {
+    console.error(
+      'llama-cpp-python is required to package local GGUF generation. ' +
+        'Install backend extras with: python -m pip install "./backend[packaging,local-generation]"',
+    );
+    process.exit(1);
+  }
 }
 
 const modelCheck = spawnSync(
@@ -61,7 +67,7 @@ if (modelCheck.status !== 0) {
   if (process.env.ALLOW_MISSING_LOCAL_LLM === '1') {
     console.warn(
       `Bundled generation model is missing: ${generationModel}\n` +
-        'Continuing because ALLOW_MISSING_LOCAL_LLM=1. Search will work; written answers require a user-provided GGUF model or Ollama.',
+        'Continuing because ALLOW_MISSING_LOCAL_LLM=1. Search will work; written answers require Ollama.',
     );
   } else {
     console.error(

@@ -6,14 +6,20 @@ Entry point is the package's __main__, with src/ on the analysis path so
 """
 
 from pathlib import Path
+from importlib.util import find_spec
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 block_cipher = None
 backend_dir = Path(SPECPATH).resolve()
 src_dir = backend_dir / 'src'
-llama_datas = collect_data_files('llama_cpp')
-llama_binaries = collect_dynamic_libs('llama_cpp')
-llama_hiddenimports = collect_submodules('llama_cpp')
+if find_spec('llama_cpp') is None:
+    llama_datas = []
+    llama_binaries = []
+    llama_hiddenimports = []
+else:
+    llama_datas = collect_data_files('llama_cpp')
+    llama_binaries = collect_dynamic_libs('llama_cpp')
+    llama_hiddenimports = collect_submodules('llama_cpp')
 chroma_hiddenimports = []
 for module in (
     'chromadb.api',
