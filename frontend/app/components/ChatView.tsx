@@ -118,7 +118,7 @@ function Sources({ documents }: { documents: RetrievedDocument[] }) {
       {open && (
         <ol className="mt-2 space-y-2">
           {documents.map((doc, index) => (
-            <li key={doc.id} className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+            <li key={doc.id} className="rounded-md border border-zinc-800 bg-zinc-950/80 p-3">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-xs font-medium text-cyan-300">[S{index + 1}]</span>
                 <span className="text-xs text-zinc-500">
@@ -146,10 +146,10 @@ function Bubble({ message }: { message: ChatMessage }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-full rounded-2xl px-4 py-3 shadow-sm sm:max-w-[85%] xl:max-w-[54rem] ${
+        className={`max-w-full rounded-md px-4 py-3 shadow-sm ${
           isUser
-            ? 'bg-cyan-400 text-zinc-950'
-            : 'border border-zinc-800 bg-zinc-900/95 text-zinc-100'
+            ? 'max-w-[min(82%,34rem)] bg-cyan-400 text-zinc-950'
+            : 'max-w-[min(100%,54rem)] border border-zinc-800 bg-zinc-900/95 text-zinc-100'
         }`}
       >
         <p className="whitespace-pre-wrap text-sm leading-6">
@@ -386,10 +386,13 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
     );
   };
 
+  const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
+  const threadTitle = activeConversation?.title || (conversationId ? 'Conversation' : 'New chat');
+
   return (
-    <div className="flex min-h-[calc(100dvh-14rem)] flex-1 flex-col gap-4 lg:grid lg:min-h-[34rem] lg:grid-cols-[280px_minmax(0,1fr)] xl:min-h-[calc(100dvh-13rem)]">
+    <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
       {/* Conversations */}
-      <aside className="min-w-0 rounded-md border border-zinc-800 bg-zinc-950/70 p-3 lg:flex lg:min-h-0 lg:flex-col">
+      <aside className="min-h-0 min-w-0 rounded-md border border-zinc-800 bg-zinc-950/70 p-3 lg:flex lg:flex-col">
         <button
           type="button"
           onClick={startNew}
@@ -409,10 +412,10 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
           {conversations.map((conversation) => (
             <div
               key={conversation.id}
-              className={`group flex min-w-56 items-center gap-1 rounded-md border px-2.5 py-2 transition lg:min-w-0 ${
+              className={`group flex min-w-56 items-center gap-1 rounded-md border px-2.5 py-2.5 transition lg:min-w-0 ${
                 conversation.id === conversationId
-                  ? 'border-cyan-800 bg-zinc-900'
-                  : 'border-transparent bg-zinc-900/40 hover:border-zinc-800 hover:bg-zinc-900/70'
+                  ? 'border-cyan-800 bg-zinc-900 shadow-[inset_2px_0_0_rgb(34_211_238)]'
+                  : 'border-transparent bg-zinc-900/30 hover:border-zinc-800 hover:bg-zinc-900/70'
               }`}
             >
               <button
@@ -440,10 +443,10 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
 
       {/* Thread */}
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
-        <div className="flex min-h-14 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-2.5">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-white">
-              {conversationId ? 'Conversation' : 'New chat'}
+              {threadTitle}
             </h2>
             <p className="mt-0.5 truncate text-xs text-zinc-500">
               {messages.length
@@ -495,8 +498,8 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
           </div>
         )}
 
-        <form onSubmit={send} className="border-t border-zinc-800 p-4">
-          <div className="mb-3 inline-grid grid-cols-3 rounded-md border border-zinc-800 bg-zinc-950 p-1">
+        <form onSubmit={send} className="border-t border-zinc-800 bg-zinc-950/95 p-3 sm:p-4">
+          <div className="mb-2 inline-grid grid-cols-3 rounded-md border border-zinc-800 bg-zinc-950 p-1">
             {(Object.keys(ANSWER_MODES) as AnswerMode[]).map((mode) => (
               <button
                 key={mode}
@@ -512,7 +515,7 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
               </button>
             ))}
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -525,7 +528,7 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
               }}
               placeholder="Ask a question about your documents…"
               rows={2}
-              className="min-h-12 flex-1 resize-none rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              className="min-h-11 flex-1 resize-none rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
             />
             {streaming ? (
               <button
