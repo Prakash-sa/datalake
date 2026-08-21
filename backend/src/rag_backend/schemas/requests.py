@@ -111,3 +111,19 @@ class DataImportRequest(BaseModel):
     """Read an archive of local data."""
 
     source: str = Field(..., min_length=1, max_length=4096)
+
+
+class ChatRequest(BaseModel):
+    """One conversation turn."""
+
+    message: str = Field(..., min_length=1, max_length=MAX_QUERY_LENGTH)
+    # Omit to start a new conversation.
+    conversation_id: str | None = Field(None, max_length=120)
+    k: int = Field(5, ge=1, le=100)
+    min_score: float | None = Field(0.0, ge=0.0, le=1.0)
+
+
+class ConversationRenameRequest(BaseModel):
+    """Retitle a conversation."""
+
+    title: str = Field(..., min_length=1, max_length=200)

@@ -66,6 +66,10 @@ declare global {
         request: StreamQueryRequest,
         onEvent: (event: StreamEvent) => void,
       ) => Promise<CancelStream>;
+      streamChat: (
+        request: { message: string; conversationId?: string | null; k?: number; minScore?: number },
+        onEvent: (event: import('@/lib/chat').ChatStreamEvent) => void,
+      ) => Promise<CancelStream>;
     };
   }
 }

@@ -36,7 +36,7 @@ runs inside the app.
 | **Import** | PDF, DOCX, Markdown, HTML, and text, via a native file picker or drag and drop |
 | **Index** | Parsed, chunked, embedded, and stored in a local Chroma collection plus a SQLite catalog |
 | **Search** | Dense vector search fused with SQLite FTS5 lexical search |
-| **Answer** | Streamed, grounded responses that cite the chunks they used |
+| **Chat** | Multi-turn conversations with streamed, cited answers and follow-up questions |
 | **Operate** | A job queue with progress, retry, and cancel; diagnostics; export, import, and backup |
 
 Generated prose answers are the only feature that needs a local
@@ -47,10 +47,10 @@ and returns ranked cited passages.
 
 ## Screenshots
 
-### Query with sources
+### Chat
 
-Retrieved passages are shown with relevance scores and the metadata that
-produced them, so an answer can always be traced back to its evidence.
+Answers stream in and cite their sources. Follow-up questions carry the
+conversation's context, and each answer's sources can be expanded inline.
 
 ![Query and sources](docs/assets/screenshots/02-query-and-sources.png)
 

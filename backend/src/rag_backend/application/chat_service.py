@@ -110,9 +110,7 @@ class ChatService:
 
         # Persist the question before answering, so a failed or cancelled turn
         # still leaves the conversation readable.
-        self._catalog.add_message(
-            f"msg_{uuid4().hex}", conversation_id, "user", question
-        )
+        self._catalog.add_message(f"msg_{uuid4().hex}", conversation_id, "user", question)
 
         try:
             documents = self._rag.search_documents(

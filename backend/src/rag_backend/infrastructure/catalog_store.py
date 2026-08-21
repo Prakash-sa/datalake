@@ -476,8 +476,7 @@ class CatalogStore:
         now = datetime.now(UTC).isoformat()
         with closing(self._connect()) as conn, conn:
             conn.execute(
-                "INSERT INTO conversations (id, title, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
                 (conversation_id, title, now, now),
             )
         return {
@@ -590,9 +589,7 @@ class CatalogStore:
     def delete_conversation(self, conversation_id: str) -> bool:
         """Delete a conversation and its messages."""
         with closing(self._connect()) as conn, conn:
-            cursor = conn.execute(
-                "DELETE FROM conversations WHERE id = ?", (conversation_id,)
-            )
+            cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
         return cursor.rowcount > 0
 
     @staticmethod
@@ -606,4 +603,3 @@ class CatalogStore:
             "model": json.loads(row["model_json"] or "{}"),
             "created_at": row["created_at"],
         }
-

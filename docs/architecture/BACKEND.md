@@ -45,6 +45,7 @@ Use cases and orchestration.
 | `ingestion_service.py` | File parsing, normalisation, and chunking                  |
 | `retrieval.py`         | Reciprocal-rank fusion — pure functions, no I/O            |
 | `prompts.py`           | Versioned prompt templates and context rendering           |
+| `chat_service.py`      | Multi-turn conversations: history, follow-ups, persistence |
 | `eval_service.py`      | Deterministic release-gating checks and retrieval metrics  |
 | `ingestion_jobs.py`    | Persistent job queue and single background worker          |
 | `data_transfer.py`     | Export, import, and backup of local data                   |
@@ -218,6 +219,25 @@ file. The catalog runs in WAL mode, so replacing the bytes under a live
 connection leaves a stale `-wal` that SQLite replays over the restored data. The
 current catalog is backed up first, and the caller is told a reindex is needed,
 since vectors are not part of the archive.
+
+## Conversations
+
+`chat_service.py` runs a turn: retrieve, generate, persist. Conversations and
+messages live in SQLite, so a thread survives a restart.
+
+Two things make a turn conversational rather than a fresh query:
+
+- **History in the prompt.** The most recent turns are rendered into the prompt,
+  bounded so they cannot crowd out the retrieved evidence the answer must rest on.
+- **Follow-up expansion.** "Why is that?" embeds to nothing useful, so a short or
+  referring question is prefixed with the previous question before retrieval. A
+  self-contained question is left alone, since prepending history would blur its
+  vector. Possessives are deliberately not treated as referring, because "its
+  transitions" almost always refers within the same sentence.
+
+The question is written before generation starts, so a failed or cancelled turn
+still leaves a readable conversation with the error code recorded against the
+assistant's turn.
 
 ## Streaming
 

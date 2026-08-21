@@ -12,6 +12,7 @@ Interactive docs are served at `/docs` when `DEBUG=true`.
 - [Health and diagnostics](#health-and-diagnostics)
 - [Documents](#documents)
 - [Ingestion jobs](#ingestion-jobs)
+- [Chat](#chat)
 - [Search and answers](#search-and-answers)
 - [Models](#models)
 - [Settings](#settings)
@@ -194,6 +195,54 @@ returned in `missing_sources` rather than failing the request.
 
 ---
 
+## Chat
+
+Multi-turn conversations. Prior turns inform both what is retrieved and how the
+answer reads, and every turn is persisted.
+
+### `POST /chat/stream`
+
+One turn, streamed as server-sent events. Omit `conversation_id` to start a new
+conversation; the id used is announced in the first frame.
+
+```json
+{ "message": "How are rankings merged?", "conversation_id": null, "k": 5 }
+```
+
+```
+data: {"event":"conversation","conversation_id":"conv_5f12…","title":"How are rankings merged?"}
+data: {"event":"sources","documents":[…],"truncated_document_count":0}
+data: {"event":"token","text":"Rankings "}
+data: {"event":"done","answer":"…","citations":{…},"message_id":"msg_…"}
+data: {"event":"error","code":"model_unavailable","actionable":true}
+```
+
+The conversation is announced before the answer starts so a new one can appear
+in the sidebar immediately. The question is persisted before generation, so a
+failed or cancelled turn still leaves the conversation readable, with the error
+code recorded on the assistant turn.
+
+A short or referring follow-up such as *"why is that?"* is expanded with the
+previous question before retrieval, since it would embed to nothing useful
+alone. A self-contained question is left as written, because prepending history
+would pull retrieval back toward the earlier topic.
+
+### `GET /conversations`
+
+Conversations, most recently updated first, with message counts.
+
+### `GET /conversations/{id}`
+
+A conversation with its full message history. Each assistant message carries its
+citation report and the model that produced it.
+
+### `POST /conversations/{id}/rename` · `DELETE /conversations/{id}`
+
+Retitle or delete. Deleting removes every message in the conversation. Both
+return 404 for an unknown id.
+
+---
+
 ## Search and answers
 
 ### `POST /documents/search`
@@ -220,7 +269,8 @@ Hybrid retrieval without generation. Works with no Ollama installed.
 
 ### `POST /query`
 
-Full pipeline: retrieve, budget the context, generate, validate citations.
+Single-shot: retrieve, budget the context, generate, validate citations. Keeps no
+history; use `/chat/stream` for conversations.
 
 ```json
 {

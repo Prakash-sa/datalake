@@ -60,6 +60,7 @@ test('exposes only the narrow preload surface', async () => {
     'isElectron',
     'platform',
     'selectDocuments',
+    'streamChat',
     'streamQuery',
   ]);
 });

@@ -1,6 +1,8 @@
 """Pydantic request and response schemas for the HTTP API."""
 
 from rag_backend.schemas.requests import (
+    ChatRequest,
+    ConversationRenameRequest,
     DataExportRequest,
     DataImportRequest,
     DocumentIndexRequest,
@@ -14,7 +16,12 @@ from rag_backend.schemas.requests import (
     SettingsUpdateRequest,
 )
 from rag_backend.schemas.responses import (
+    ChatMessage,
     CitationReport,
+    Conversation,
+    ConversationListResponse,
+    ConversationResponse,
+    ConversationSummary,
     DocumentCatalogResponse,
     EvalResponse,
     HealthResponse,
@@ -31,7 +38,14 @@ from rag_backend.schemas.responses import (
 )
 
 __all__ = [
+    "ChatMessage",
+    "ChatRequest",
     "CitationReport",
+    "Conversation",
+    "ConversationListResponse",
+    "ConversationRenameRequest",
+    "ConversationResponse",
+    "ConversationSummary",
     "DataExportRequest",
     "DataImportRequest",
     "DocumentCatalogResponse",

@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from rag_backend.application.chat_service import ChatService
 from rag_backend.application.data_transfer import DataTransferService
 from rag_backend.application.eval_service import EvalService
 from rag_backend.application.ingestion_jobs import IngestionJobService
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.eval_service = None
     app.state.job_service = None
     app.state.data_service = None
+    app.state.chat_service = None
 
     try:
         rag_service = DocumentRAGService(
@@ -51,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         job_service.start()
         app.state.job_service = job_service
         app.state.data_service = DataTransferService(rag_service)
+        app.state.chat_service = ChatService(rag_service)
         logger.info("RAG service initialized successfully")
     except Exception as e:
         # Start anyway so /health can report 503 and the desktop shell can
@@ -68,4 +71,5 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.eval_service = None
         app.state.job_service = None
         app.state.data_service = None
+        app.state.chat_service = None
         logger.info("RAG service shut down")

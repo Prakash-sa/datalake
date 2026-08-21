@@ -296,14 +296,24 @@ function registerApiProxy() {
   // Streaming queries cannot use api:request, which resolves only once the
   // whole response is buffered. Main owns the connection and the backend token;
   // the renderer receives frames through a per-stream channel it never names.
-  ipcMain.handle('api:streamQuery', async (event, request) => {
+  // Streaming endpoints the renderer may open. An allowlist rather than a
+  // free-form path keeps the bridge as narrow as the non-streaming one.
+  const STREAM_ENDPOINTS = {
+    query: '/query/stream',
+    chat: '/chat/stream',
+  };
+
+  ipcMain.handle('api:openStream', async (event, request) => {
     if (!isTrustedSender(event)) {
       return { ok: false, error: 'Untrusted IPC sender' };
     }
 
-    const query = request?.query;
-    if (typeof query !== 'string' || !query.trim()) {
-      return { ok: false, error: 'Invalid query' };
+    const path = STREAM_ENDPOINTS[request?.endpoint];
+    if (!path) {
+      return { ok: false, error: 'Unknown stream endpoint' };
+    }
+    if (!request?.body || typeof request.body !== 'object') {
+      return { ok: false, error: 'Invalid request body' };
     }
 
     const streamId = crypto.randomUUID();
@@ -318,18 +328,14 @@ function registerApiProxy() {
 
     (async () => {
       try {
-        const response = await fetch(`${backendBaseUrl}/query/stream`, {
+        const response = await fetch(`${backendBaseUrl}${path}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Accept: 'text/event-stream',
             ...(backendToken ? { Authorization: `Bearer ${backendToken}` } : {}),
           },
-          body: JSON.stringify({
-            query,
-            k: typeof request.k === 'number' ? request.k : 5,
-            min_score: typeof request.minScore === 'number' ? request.minScore : 0,
-          }),
+          body: JSON.stringify(request.body),
           signal: controller.signal,
         });
 

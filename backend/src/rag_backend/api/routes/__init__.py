@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from rag_backend.api.routes import (
+    chat,
     data,
     documents,
     evals,
@@ -23,6 +24,7 @@ api_router.include_router(settings.router)
 api_router.include_router(documents.router)
 api_router.include_router(data.router)
 api_router.include_router(jobs.router)
+api_router.include_router(chat.router)
 api_router.include_router(search.router)
 api_router.include_router(stream.router)
 api_router.include_router(evals.router)

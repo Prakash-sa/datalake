@@ -196,3 +196,47 @@ class JobListResponse(BaseModel):
     status: str
     jobs: list[IngestionJob]
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class ChatMessage(BaseModel):
+    """A single turn in a conversation."""
+
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    citations: dict[str, Any] = {}
+    model: dict[str, Any] = {}
+    created_at: str
+
+
+class ConversationSummary(BaseModel):
+    """A conversation without its messages."""
+
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int = 0
+
+
+class Conversation(BaseModel):
+    """A conversation with its messages."""
+
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    messages: list[ChatMessage] = []
+
+
+class ConversationListResponse(BaseModel):
+    status: str
+    conversations: list[ConversationSummary]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class ConversationResponse(BaseModel):
+    status: str
+    conversation: Conversation
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())

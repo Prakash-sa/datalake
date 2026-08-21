@@ -17,9 +17,32 @@ CHAT_PROMPT_VERSION = "grounded-chat-v1"
 # How many earlier turns to carry. Enough for follow-ups to make sense without
 # crowding out the retrieved evidence, which is what the answer must rest on.
 HISTORY_TURNS = 6
-# A follow-up this short is almost certainly anaphoric ("what about the second
-# one?"), so retrieval needs the earlier turns to find anything useful.
-FOLLOW_UP_WORD_LIMIT = 12
+# Below this a question rarely carries enough on its own to retrieve against.
+FOLLOW_UP_WORD_LIMIT = 8
+
+# Words that point at something said earlier. Their presence matters more than
+# length: "Explain in detail how privacy is preserved" is short but complete,
+# while "why is that?" is short and meaningless alone.
+# Possessives are deliberately excluded: "its transitions" almost always refers
+# within the same sentence, so treating them as anaphoric drags self-contained
+# questions back toward the previous topic.
+ANAPHORIC_MARKERS = frozenset(
+    {
+        "it",
+        "that",
+        "this",
+        "these",
+        "those",
+        "they",
+        "them",
+        "one",
+        "ones",
+        "former",
+        "latter",
+        "instead",
+        "else",
+    }
+)
 
 # Context is assembled against a character budget rather than true tokens: the
 # sidecar must not load a tokenizer for every supported model, and roughly four
@@ -123,22 +146,28 @@ def render_history(messages: list[dict[str, Any]]) -> str:
 def build_retrieval_query(question: str, messages: list[dict[str, Any]]) -> str:
     """Expand a follow-up into something that can actually be retrieved.
 
-    "What about the second one?" embeds to nothing useful on its own. Short
-    questions in an ongoing conversation are therefore prefixed with the
-    previous user turn, which usually carries the subject. Longer questions are
-    left alone, since they stand by themselves and prepending history would
-    blur the vector.
+    "What about the second one?" embeds to nothing useful on its own, so the
+    previous question is prepended to carry the subject. A question that stands
+    by itself is left alone: prepending history would blur its vector and pull
+    retrieval back toward the earlier topic.
+
+    Expansion happens when the question refers to something earlier, or is too
+    short to retrieve against on its own.
     """
     question = question.strip()
-    if len(question.split()) > FOLLOW_UP_WORD_LIMIT:
-        return question
-
     previous = [
         m["content"].strip()
         for m in messages
         if m.get("role") == "user" and m.get("content", "").strip()
     ]
     if not previous:
+        return question
+
+    words = [w.strip(".,!?;:'\"").lower() for w in question.split()]
+    refers_back = any(word in ANAPHORIC_MARKERS for word in words)
+    too_short = len(words) <= FOLLOW_UP_WORD_LIMIT
+
+    if not (refers_back or too_short):
         return question
 
     return f"{previous[-1]} {question}"
