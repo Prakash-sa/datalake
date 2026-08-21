@@ -1,6 +1,6 @@
 {
   "name": "rag-query-frontend",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Production desktop and web UI for the Document RAG Engine",
   "private": true,
   "main": "electron/main.js",
