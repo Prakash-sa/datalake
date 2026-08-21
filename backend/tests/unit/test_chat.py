@@ -25,15 +25,17 @@ class StubGeneration:
     def __init__(self, tokens: list[str] | None = None):
         self.tokens = tokens or ["Merged ", "with ", "RRF ", "[S1]."]
         self.prompts: list[str] = []
+        self.seen_max_tokens: int | None = None
 
     def stream_generate(self, prompt, temperature=0.1, cancel=None, **kwargs):
         self.prompts.append(prompt)
+        self.seen_max_tokens = kwargs.get("max_tokens")
         for token in self.tokens:
             if cancel is not None and cancel.is_set():
                 return
             yield token
 
-    def generate(self, prompt, temperature=0.1):
+    def generate(self, prompt, temperature=0.1, **kwargs):
         return "".join(self.stream_generate(prompt, temperature=temperature))
 
     def health(self):
@@ -165,6 +167,11 @@ class TestTurns:
 
         assert "CONVERSATION SO FAR" in rag.generation.prompts[-1]
         assert "How are rankings merged?" in rag.generation.prompts[-1]
+
+    def test_answer_mode_controls_generation_cap(self, chat, rag):
+        list(chat.stream_turn("How are rankings merged?", answer_mode="deep", k=8))
+
+        assert rag.generation.seen_max_tokens == 512
 
     def test_the_question_survives_a_cancelled_turn(self, chat):
         import threading

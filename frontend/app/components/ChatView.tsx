@@ -20,13 +20,19 @@ import {
   explainChatError,
   streamChat,
 } from '@/lib/chat';
-import type { CancelStream, RetrievedDocument } from '@/types/electron';
+import type { AnswerMode, CancelStream, RetrievedDocument } from '@/types/electron';
 
 const SUGGESTIONS = [
   'What are the main topics in my documents?',
   'Summarise the key points.',
   'What should I be aware of before deploying?',
 ];
+
+const ANSWER_MODES: Record<AnswerMode, { label: string; k: number }> = {
+  fast: { label: 'Fast', k: 3 },
+  balanced: { label: 'Balanced', k: 5 },
+  deep: { label: 'Deep', k: 8 },
+};
 
 function Sources({ documents }: { documents: RetrievedDocument[] }) {
   const [open, setOpen] = useState(false);
@@ -114,6 +120,7 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [answerMode, setAnswerMode] = useState<AnswerMode>('balanced');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<CancelStream | null>(null);
@@ -255,7 +262,12 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
 
     try {
       cancelRef.current = await streamChat(
-        { message: question, conversationId, k: 5 },
+        {
+          message: question,
+          conversationId,
+          k: ANSWER_MODES[answerMode].k,
+          answerMode,
+        },
         handleEvent,
         apiUrl,
       );
@@ -387,6 +399,22 @@ export default function ChatView({ apiUrl }: { apiUrl: string }) {
         )}
 
         <form onSubmit={send} className="border-t border-zinc-800 p-4">
+          <div className="mb-3 inline-grid grid-cols-3 rounded-md border border-zinc-800 bg-zinc-950 p-1">
+            {(Object.keys(ANSWER_MODES) as AnswerMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setAnswerMode(mode)}
+                className={`min-h-8 rounded px-3 text-xs font-medium transition ${
+                  answerMode === mode
+                    ? 'bg-cyan-400 text-zinc-950'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'
+                }`}
+              >
+                {ANSWER_MODES[mode].label}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <textarea
               value={input}

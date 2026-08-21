@@ -40,7 +40,10 @@ async def query_documents(
     """Execute the RAG pipeline: retrieve documents and generate an answer."""
     try:
         result = rag_service.query_documents(
-            user_query=request.query, k=request.k, min_score=request.min_score
+            user_query=request.query,
+            k=request.k,
+            min_score=request.min_score,
+            answer_mode=request.answer_mode,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

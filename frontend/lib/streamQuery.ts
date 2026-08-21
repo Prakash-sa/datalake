@@ -42,6 +42,7 @@ async function browserStreamQuery(
           query: request.query,
           k: request.k ?? 5,
           min_score: request.minScore ?? 0,
+          answer_mode: request.answerMode ?? 'balanced',
         }),
         signal: controller.signal,
       });

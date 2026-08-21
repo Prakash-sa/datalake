@@ -60,6 +60,12 @@ DEFAULT_MODEL_PROFILES = {
     "balanced": {"llm_model": "qwen3:4b", "embedding_model": "qwen3-embedding:0.6b"},
 }
 
+ANSWER_MODE_PROFILES = {
+    "fast": {"k": 3, "context_token_budget": 1600, "max_tokens": 160},
+    "balanced": {"k": 5, "context_token_budget": DEFAULT_CONTEXT_TOKEN_BUDGET, "max_tokens": 256},
+    "deep": {"k": 8, "context_token_budget": 4500, "max_tokens": 512},
+}
+
 
 class DocumentRAGService:
     """Application service for indexing, searching, and querying documents."""
@@ -67,6 +73,7 @@ class DocumentRAGService:
     MAX_QUERY_LENGTH = 1000
     MIN_SIMILARITY_SCORE = 0.0
     DEFAULT_MODEL_PROFILES = DEFAULT_MODEL_PROFILES
+    ANSWER_MODE_PROFILES = ANSWER_MODE_PROFILES
     PROMPT_VERSION = PROMPT_VERSION
     RETRIEVAL_VERSION = RETRIEVAL_VERSION
 
@@ -170,6 +177,13 @@ class DocumentRAGService:
         close = getattr(self.generation, "close", None)
         if callable(close):
             close()
+
+    @classmethod
+    def answer_profile(cls, answer_mode: str) -> dict[str, int]:
+        """Return retrieval and generation limits for a speed/depth mode."""
+        return cls.ANSWER_MODE_PROFILES.get(
+            answer_mode, cls.ANSWER_MODE_PROFILES["balanced"]
+        )
 
     def _resolve_generation_model(self, configured: str) -> str:
         """Pick a generation model from what Ollama actually has installed.
@@ -502,7 +516,11 @@ class DocumentRAGService:
             return []
 
     def query_documents(
-        self, user_query: str, k: int = 5, min_score: float | None = None
+        self,
+        user_query: str,
+        k: int = 5,
+        min_score: float | None = None,
+        answer_mode: str = "balanced",
     ) -> dict[str, Any]:
         """Execute the RAG pipeline: retrieve context, then generate an answer."""
         try:
@@ -510,7 +528,10 @@ class DocumentRAGService:
                 raise ValueError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
 
             start_time = datetime.now()
-            relevant_docs = self.search_documents(user_query, k=k, min_score=min_score)
+            profile = self.answer_profile(answer_mode)
+            relevant_docs = self.search_documents(
+                user_query, k=k or profile["k"], min_score=min_score
+            )
 
             if not relevant_docs:
                 elapsed = (datetime.now() - start_time).total_seconds()
@@ -529,7 +550,7 @@ class DocumentRAGService:
             # Only the documents that fit the budget are sent to the model, so
             # citations must be validated against this list, not the full result.
             context_docs = select_context_documents(
-                relevant_docs, token_budget=self.context_token_budget
+                relevant_docs, token_budget=profile["context_token_budget"]
             )
             context = build_context(context_docs)
 
@@ -538,6 +559,7 @@ class DocumentRAGService:
                 answer = self.generation.generate(
                     GROUNDED_ANSWER_TEMPLATE.format(context=context, query=user_query),
                     temperature=self.temperature,
+                    max_tokens=profile["max_tokens"],
                 )
             except RagError as llm_error:
                 # Degrade to context-only so retrieval stays usable without a
@@ -581,6 +603,7 @@ class DocumentRAGService:
                 "citations": citations,
                 # Documents retrieved but dropped by the context budget.
                 "truncated_document_count": len(relevant_docs) - len(context_docs),
+                "answer_mode": answer_mode,
                 **({"code": degraded_code} if degraded_code else {}),
             }
         except ValueError as e:
@@ -599,6 +622,7 @@ class DocumentRAGService:
         user_query: str,
         k: int = 5,
         min_score: float | None = None,
+        answer_mode: str = "balanced",
         cancel: threading.Event | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Run the RAG pipeline, yielding events as generation progresses.
@@ -613,11 +637,14 @@ class DocumentRAGService:
         citations while the answer streams in.
         """
         start_time = datetime.now()
+        profile = self.answer_profile(answer_mode)
 
         try:
             if not user_query or len(user_query) > self.MAX_QUERY_LENGTH:
                 raise ValidationError(f"Query must be 1-{self.MAX_QUERY_LENGTH} characters")
-            relevant_docs = self.search_documents(user_query, k=k, min_score=min_score)
+            relevant_docs = self.search_documents(
+                user_query, k=k or profile["k"], min_score=min_score
+            )
         except ValidationError as e:
             self.stats["errors"] += 1
             self._record_query_trace(user_query, [], "error", {}, error_code=str(e.code))
@@ -648,12 +675,13 @@ class DocumentRAGService:
             return
 
         context_docs = select_context_documents(
-            relevant_docs, token_budget=self.context_token_budget
+            relevant_docs, token_budget=profile["context_token_budget"]
         )
         yield {
             "event": "sources",
             "documents": context_docs,
             "truncated_document_count": len(relevant_docs) - len(context_docs),
+            "answer_mode": answer_mode,
         }
 
         prompt = GROUNDED_ANSWER_TEMPLATE.format(
@@ -665,6 +693,7 @@ class DocumentRAGService:
             for token in self.generation.stream_generate(
                 prompt,
                 temperature=self.temperature,
+                max_tokens=profile["max_tokens"],
                 cancel=cancel,
             ):
                 parts.append(token)
@@ -711,6 +740,7 @@ class DocumentRAGService:
             "citations": citations,
             "truncated_document_count": len(relevant_docs) - len(context_docs),
             "processing_time_seconds": round(elapsed, 2),
+            "answer_mode": answer_mode,
         }
 
     def _record_query_trace(

@@ -46,6 +46,7 @@ function streamQuery(request, onEvent) {
       query: String(request?.query ?? ''),
       k: Number(request?.k ?? 5),
       min_score: Number(request?.minScore ?? 0),
+      answer_mode: String(request?.answerMode ?? 'balanced'),
     },
     onEvent,
   );
@@ -57,6 +58,7 @@ function streamChat(request, onEvent) {
     message: String(request?.message ?? ''),
     k: Number(request?.k ?? 5),
     min_score: Number(request?.minScore ?? 0),
+    answer_mode: String(request?.answerMode ?? 'balanced'),
   };
   if (request?.conversationId) {
     body.conversation_id = String(request.conversationId);

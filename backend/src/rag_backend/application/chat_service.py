@@ -81,6 +81,7 @@ class ChatService:
         conversation_id: str | None = None,
         k: int = 5,
         min_score: float | None = None,
+        answer_mode: str = "balanced",
         cancel: threading.Event | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Run one conversation turn, yielding events as it progresses.
@@ -101,6 +102,7 @@ class ChatService:
         conversation_id = self._ensure_conversation(conversation_id, question)
         conversation = self._catalog.get_conversation(conversation_id) or {}
         history = conversation.get("messages", [])
+        profile = self._rag.answer_profile(answer_mode)
 
         yield {
             "event": "conversation",
@@ -114,7 +116,9 @@ class ChatService:
 
         try:
             documents = self._rag.search_documents(
-                build_retrieval_query(question, history), k=k, min_score=min_score
+                build_retrieval_query(question, history),
+                k=k or profile["k"],
+                min_score=min_score,
             )
         except Exception as e:
             logger.error("Retrieval failed: %s", e, exc_info=True)
@@ -122,12 +126,13 @@ class ChatService:
             return
 
         context_docs = select_context_documents(
-            documents, token_budget=self._rag.context_token_budget
+            documents, token_budget=profile["context_token_budget"]
         )
         yield {
             "event": "sources",
             "documents": context_docs,
             "truncated_document_count": len(documents) - len(context_docs),
+            "answer_mode": answer_mode,
         }
 
         prompt = CHAT_ANSWER_TEMPLATE.format(
@@ -141,6 +146,7 @@ class ChatService:
             for token in self._rag.generation.stream_generate(
                 prompt,
                 temperature=self._rag.temperature,
+                max_tokens=profile["max_tokens"],
                 cancel=cancel,
             ):
                 parts.append(token)
@@ -173,6 +179,7 @@ class ChatService:
             "retrieved_documents": context_docs,
             "citations": citations,
             "processing_time_seconds": round(elapsed, 2),
+            "answer_mode": answer_mode,
         }
 
     def _record_answer(

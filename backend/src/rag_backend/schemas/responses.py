@@ -118,6 +118,7 @@ class QueryResponse(BaseModel):
     document_count: int
     processing_time_seconds: float
     citations: CitationReport | None = None
+    answer_mode: str = "balanced"
     # Documents retrieved but dropped to fit the context token budget.
     truncated_document_count: int = 0
     # Structured reason when the answer degraded to context-only.

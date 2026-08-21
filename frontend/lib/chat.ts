@@ -1,8 +1,18 @@
-import type { CancelStream, CitationReport, RetrievedDocument } from '@/types/electron';
+import type {
+  AnswerMode,
+  CancelStream,
+  CitationReport,
+  RetrievedDocument,
+} from '@/types/electron';
 
 export type ChatStreamEvent =
   | { event: 'conversation'; conversation_id: string; title: string }
-  | { event: 'sources'; documents: RetrievedDocument[]; truncated_document_count: number }
+  | {
+      event: 'sources';
+      documents: RetrievedDocument[];
+      truncated_document_count: number;
+      answer_mode?: AnswerMode;
+    }
   | { event: 'token'; text: string }
   | {
       event: 'done';
@@ -13,6 +23,7 @@ export type ChatStreamEvent =
       retrieved_documents: RetrievedDocument[];
       citations: CitationReport;
       processing_time_seconds: number;
+      answer_mode?: AnswerMode;
     }
   | { event: 'error'; code: string; error: string; actionable?: boolean };
 
@@ -40,6 +51,7 @@ export type ChatRequest = {
   conversationId?: string | null;
   k?: number;
   minScore?: number;
+  answerMode?: AnswerMode;
 };
 
 /**
@@ -71,6 +83,7 @@ export async function streamChat(
           conversation_id: request.conversationId ?? undefined,
           k: request.k ?? 5,
           min_score: request.minScore ?? 0,
+          answer_mode: request.answerMode ?? 'balanced',
         }),
         signal: controller.signal,
       });

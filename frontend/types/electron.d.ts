@@ -6,6 +6,7 @@ export type StreamEvent =
       event: 'sources';
       documents: RetrievedDocument[];
       truncated_document_count: number;
+      answer_mode?: AnswerMode;
     }
   | { event: 'token'; text: string }
   | {
@@ -17,6 +18,7 @@ export type StreamEvent =
       truncated_document_count?: number;
       processing_time_seconds?: number;
       code?: string;
+      answer_mode?: AnswerMode;
     }
   | { event: 'error'; code: string; error: string; actionable?: boolean };
 
@@ -41,7 +43,10 @@ export interface StreamQueryRequest {
   query: string;
   k?: number;
   minScore?: number;
+  answerMode?: AnswerMode;
 }
+
+export type AnswerMode = 'fast' | 'balanced' | 'deep';
 
 /** Called to cancel an in-flight stream. */
 export type CancelStream = () => void;
@@ -67,7 +72,13 @@ declare global {
         onEvent: (event: StreamEvent) => void,
       ) => Promise<CancelStream>;
       streamChat: (
-        request: { message: string; conversationId?: string | null; k?: number; minScore?: number },
+        request: {
+          message: string;
+          conversationId?: string | null;
+          k?: number;
+          minScore?: number;
+          answerMode?: AnswerMode;
+        },
         onEvent: (event: import('@/lib/chat').ChatStreamEvent) => void,
       ) => Promise<CancelStream>;
     };

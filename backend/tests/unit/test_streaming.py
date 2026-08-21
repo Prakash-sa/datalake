@@ -25,9 +25,11 @@ class StubGeneration:
         self.tokens = tokens or ["Answer ", "[S1]", "."]
         self.error = error
         self.seen_cancel: threading.Event | None = None
+        self.seen_max_tokens: int | None = None
 
     def stream_generate(self, prompt, temperature=0.1, cancel=None, **kwargs):
         self.seen_cancel = cancel
+        self.seen_max_tokens = kwargs.get("max_tokens")
         if self.error:
             raise self.error
         for token in self.tokens:
@@ -35,7 +37,7 @@ class StubGeneration:
                 return
             yield token
 
-    def generate(self, prompt, temperature=0.1):
+    def generate(self, prompt, temperature=0.1, **kwargs):
         return "".join(self.stream_generate(prompt, temperature=temperature))
 
     def health(self):
@@ -150,3 +152,11 @@ def test_truncated_document_count_is_reported(service):
 
     assert sources["event"] == "sources"
     assert sources["truncated_document_count"] == 0
+
+
+def test_answer_mode_controls_generation_cap(service):
+    _index(service)
+
+    _collect(service, answer_mode="fast")
+
+    assert service.generation.seen_max_tokens == 160

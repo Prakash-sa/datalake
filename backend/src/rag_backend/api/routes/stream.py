@@ -48,6 +48,7 @@ async def stream_query(
                 user_query=request.query,
                 k=request.k,
                 min_score=request.min_score,
+                answer_mode=request.answer_mode,
                 cancel=cancel,
             ):
                 yield _encode(event)

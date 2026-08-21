@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 MAX_QUERY_LENGTH = 1000
+AnswerMode = Literal["fast", "balanced", "deep"]
 
 
 class DocumentIndexRequest(BaseModel):
@@ -45,6 +46,7 @@ class DocumentQueryRequest(BaseModel):
     )
     k: int = Field(5, ge=1, le=100, description="Number of documents to retrieve")
     min_score: float | None = Field(0.0, ge=0.0, le=1.0, description="Minimum relevance score")
+    answer_mode: AnswerMode = Field("balanced", description="Speed/depth tradeoff")
 
 
 class FileIngestRequest(BaseModel):
@@ -125,6 +127,7 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = Field(None, max_length=120)
     k: int = Field(5, ge=1, le=100)
     min_score: float | None = Field(0.0, ge=0.0, le=1.0)
+    answer_mode: AnswerMode = Field("balanced", description="Speed/depth tradeoff")
 
 
 class ConversationRenameRequest(BaseModel):
